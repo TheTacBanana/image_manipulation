@@ -2,7 +2,7 @@ use std::iter;
 
 use wgpu::util::DeviceExt;
 
-use crate::vertex::Vertex;
+use crate::{vertex::Vertex, viewport::ViewportDimensions};
 
 use super::window::Window;
 
@@ -23,6 +23,8 @@ pub struct GraphicsContext {
     pub pipeline: wgpu::RenderPipeline,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
+    pub dim_buffer: wgpu::Buffer,
+    pub dim_bind_group: wgpu::BindGroup,
 }
 
 impl GraphicsContext {
@@ -82,6 +84,37 @@ impl GraphicsContext {
         };
         surface.configure(&device, &config);
 
+        let dims = ViewportDimensions::from_window(&window.raw);
+
+        let dim_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: Some("dim_bind_group_layout"),
+        });
+
+        let dim_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("dim_buf"),
+            contents: bytemuck::cast_slice(&[dims]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let dim_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &dim_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: dim_buffer.as_entire_binding(),
+            }],
+            label: Some("dim_bind_group"),
+        });
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -90,7 +123,7 @@ impl GraphicsContext {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&dim_layout],
                 push_constant_ranges: &[],
             });
 
@@ -158,6 +191,8 @@ impl GraphicsContext {
             pipeline,
             vertex_buffer,
             index_buffer,
+            dim_buffer,
+            dim_bind_group,
         }
     }
 
@@ -166,6 +201,7 @@ impl GraphicsContext {
             self.config.width = width;
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
+            ViewportDimensions::from_dim(width, height).bind(&self)
         }
     }
 
@@ -189,10 +225,10 @@ impl GraphicsContext {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -203,6 +239,7 @@ impl GraphicsContext {
             });
 
             render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_bind_group(0, &self.dim_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
