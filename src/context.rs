@@ -1,18 +1,19 @@
+use std::iter;
+
 use wgpu::util::DeviceExt;
 
 use crate::vertex::Vertex;
 
 use super::window::Window;
 
-const VERTICES : &[Vertex] = &[
+const VERTICES: &[Vertex] = &[
+    Vertex::xyz(1.0, 1.0, 0.0),
+    Vertex::xyz(1.0, -1.0, 0.0),
     Vertex::xyz(-1.0, -1.0, 0.0),
     Vertex::xyz(-1.0, 1.0, 0.0),
-    Vertex::xyz(1.0, -1.0, 0.0),
-    Vertex::xyz(1.0, -1.0, 0.0),
 ];
 
-const INDICES : &[u16] = &[0, 1, 2, 1, 2, 3];
-
+const INDICES: &[u16] = &[0, 3, 1, 1, 3, 2];
 
 pub struct GraphicsContext {
     pub surface: wgpu::Surface,
@@ -20,6 +21,8 @@ pub struct GraphicsContext {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub pipeline: wgpu::RenderPipeline,
+    pub vertex_buffer: wgpu::Buffer,
+    pub index_buffer: wgpu::Buffer,
 }
 
 impl GraphicsContext {
@@ -79,7 +82,7 @@ impl GraphicsContext {
         };
         surface.configure(&device, &config);
 
-         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
@@ -135,28 +138,26 @@ impl GraphicsContext {
             multiview: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("vertex_buf"),
-                contents: bytemuck::cast_slice(VERTICES),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("vertex_buf"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
 
-        let index_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("index_buf"),
-                contents: bytemuck::cast_slice(INDICES),
-                usage: wgpu::BufferUsages::INDEX,
-            }
-        );
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("index_buf"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
         Self {
             surface,
             device,
             queue,
             config,
-            pipeline
+            pipeline,
+            vertex_buffer,
+            index_buffer,
         }
     }
 
@@ -166,5 +167,50 @@ impl GraphicsContext {
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
         }
+    }
+
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+        }
+
+        self.queue.submit(iter::once(encoder.finish()));
+        output.present();
+
+        Ok(())
     }
 }
