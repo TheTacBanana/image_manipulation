@@ -4,6 +4,11 @@ struct ViewportDimensions {
 @group(0) @binding(0)
 var<uniform> dims: ViewportDimensions;
 
+@group(1) @binding(0)
+var t_diffuse: texture_2d<f32>;
+@group(1) @binding(1)
+var s_diffuse: sampler;
+
 // Vertex shader
 
 struct VertexInput {
@@ -28,5 +33,6 @@ fn vs_main(
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var pos = in.clip_position;
-    return vec4<f32>(pos.x / dims.dimensions.x, pos.y / dims.dimensions.y, 0.0, 1.0);
+    return textureSample(t_diffuse, s_diffuse, vec2<f32>(pos.x / dims.dimensions.x, pos.y / dims.dimensions.y));
+    // return vec4<f32>(, 0.0, 1.0);
 }

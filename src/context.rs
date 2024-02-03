@@ -1,8 +1,8 @@
 use std::iter;
 
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, TextureUsages};
 
-use crate::{vertex::Vertex, viewport::ViewportDimensions};
+use crate::{texture::{self, Texture}, vertex::Vertex, viewport::ViewportDimensions};
 
 use super::window::Window;
 
@@ -25,6 +25,7 @@ pub struct GraphicsContext {
     pub index_buffer: wgpu::Buffer,
     pub dim_buffer: wgpu::Buffer,
     pub dim_bind_group: wgpu::BindGroup,
+    pub texture_layout: wgpu::BindGroupLayout,
 }
 
 impl GraphicsContext {
@@ -115,6 +116,28 @@ impl GraphicsContext {
             label: Some("dim_bind_group"),
         });
 
+        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+            label: Some("texture_bind_group_layout"),
+        });
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -123,7 +146,7 @@ impl GraphicsContext {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&dim_layout],
+                bind_group_layouts: &[&dim_layout, &texture_layout],
                 push_constant_ranges: &[],
             });
 
@@ -193,6 +216,7 @@ impl GraphicsContext {
             index_buffer,
             dim_buffer,
             dim_bind_group,
+            texture_layout,
         }
     }
 
@@ -205,7 +229,7 @@ impl GraphicsContext {
         }
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, texture: &Texture) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -240,6 +264,7 @@ impl GraphicsContext {
 
             render_pass.set_pipeline(&self.pipeline);
             render_pass.set_bind_group(0, &self.dim_bind_group, &[]);
+            render_pass.set_bind_group(1, &texture.bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
