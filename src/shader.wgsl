@@ -1,8 +1,5 @@
-struct ViewportDimensions {
-    dimensions: vec2<f32>,
-}
 @group(0) @binding(0)
-var<uniform> dims: ViewportDimensions;
+var<uniform> dims: vec2<f32>;
 
 @group(1) @binding(0)
 var t_diffuse: texture_2d<f32>;
@@ -33,6 +30,9 @@ fn vs_main(
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var pos = in.clip_position;
-    return textureSample(t_diffuse, s_diffuse, vec2<f32>(pos.x / dims.dimensions.x, pos.y / dims.dimensions.y));
-    // return vec4<f32>(, 0.0, 1.0);
+
+    let tex_size = vec2<f32>(textureDimensions(t_diffuse));
+    var scaled_pos = (pos.xy / tex_size) % vec2<f32>(1.0);
+
+    return textureSample(t_diffuse, s_diffuse, scaled_pos);
 }
