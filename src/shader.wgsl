@@ -9,6 +9,7 @@ var s_diffuse: sampler;
 struct ImageDisplay {
     pos: vec2<f32>,
     scale: f32,
+    gamma: f32,
 };
 
 @group(2) @binding(0)
@@ -35,18 +36,30 @@ fn vs_main(
 
 // Fragment shader
 
+fn screen_pos_to_tex_coord(pos : vec2<f32>) -> vec2<f32> {
+    let tex_size = vec2<f32>(textureDimensions(t_diffuse));
+    return floor((pos.xy - image_display.pos) / image_display.scale) / tex_size;
+}
+
+fn gamma_correction(colour : vec4<f32>) -> vec4<f32> {
+    var scaled = colour; // / 255.0;
+    var inverse_gamma = 1.0 / image_display.gamma;
+    return vec4<f32>(
+        pow(scaled.x, inverse_gamma),
+        pow(scaled.y, inverse_gamma),
+        pow(scaled.z, inverse_gamma),
+        pow(scaled.w, inverse_gamma),
+    );
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var pos = in.clip_position;
+    var tex_pos = screen_pos_to_tex_coord(in.clip_position.xy);
+    let sample = textureSample(t_diffuse, s_diffuse, tex_pos);
 
-    let tex_size = vec2<f32>(textureDimensions(t_diffuse));
-    var scaled_pos = ((pos.xy - image_display.pos) * image_display.scale) / tex_size;
-
-    let sample = textureSample(t_diffuse, s_diffuse, scaled_pos);
-
-    if scaled_pos.x < 0.0 || scaled_pos.y < 0.0 || scaled_pos.x > 1.0 || scaled_pos.y > 1.0 {
+    if tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0 {
         return vec4<f32>(0.0);
     } else {
-        return sample;
+        return gamma_correction(sample);
     };
 }

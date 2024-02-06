@@ -30,6 +30,7 @@ pub struct GraphicsContext {
     pub dim_buffer: wgpu::Buffer,
     pub dim_bind_group: wgpu::BindGroup,
     pub texture_layout: wgpu::BindGroupLayout,
+    pub image_display_buffer: wgpu::Buffer,
     pub image_display_bind_group: wgpu::BindGroup,
 }
 
@@ -79,6 +80,7 @@ impl GraphicsContext {
             .filter(|f| f.is_srgb())
             .next()
             .unwrap_or(surface_caps.formats[0]);
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -123,8 +125,8 @@ impl GraphicsContext {
 
         let image_display = ImageDisplay {
             pos: [100., 100.],
-            size: 2.0,
-            _pad: 0.,
+            size: 1.,
+            gamma: 2.,
         };
 
         let image_display_layout =
@@ -302,6 +304,7 @@ impl GraphicsContext {
             dim_buffer,
             dim_bind_group,
             texture_layout,
+            image_display_buffer,
             image_display_bind_group,
         }
     }

@@ -36,15 +36,15 @@ impl ViewportDimensions {
 pub struct ImageDisplay {
     pub pos: [f32; 2],
     pub size: f32,
-    pub _pad: f32,
+    pub gamma: f32,
 }
 
-// impl ImageDisplay {
-//     pub fn bind(&self, context: &GraphicsContext) {
-//         context.queue.write_buffer(
-//             &context.,
-//             0,
-//             bytemuck::bytes_of(self),
-//         )
-//     }
-// }
+impl ImageDisplay {
+    pub fn bind(&self, context: &GraphicsContext) {
+        context.queue.write_buffer(
+            &context.image_display_buffer,
+            0,
+            bytemuck::bytes_of(self),
+        )
+    }
+}
