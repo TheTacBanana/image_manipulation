@@ -16,8 +16,10 @@ impl ViewportDimensions {
         }
     }
 
-    pub fn from_dim(x : u32, y : u32) -> Self {
-        ViewportDimensions { dimensions: [x as f32, y as f32] }
+    pub fn from_dim(x: u32, y: u32) -> Self {
+        ViewportDimensions {
+            dimensions: [x as f32, y as f32],
+        }
     }
 
     pub fn bind(&self, context: &GraphicsContext) {
@@ -28,3 +30,21 @@ impl ViewportDimensions {
         )
     }
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ImageDisplay {
+    pub pos: [f32; 2],
+    pub size: f32,
+    pub _pad: f32,
+}
+
+// impl ImageDisplay {
+//     pub fn bind(&self, context: &GraphicsContext) {
+//         context.queue.write_buffer(
+//             &context.,
+//             0,
+//             bytemuck::bytes_of(self),
+//         )
+//     }
+// }
