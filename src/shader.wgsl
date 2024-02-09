@@ -10,6 +10,8 @@ struct ImageDisplay {
     pos: vec2<f32>,
     scale: f32,
     gamma: f32,
+    scaling_mode: u32,
+    cross_correlation: u32,
 };
 
 @group(2) @binding(0)

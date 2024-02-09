@@ -1,15 +1,15 @@
-use std::{default, iter, mem, num::NonZeroU64};
+use std::iter;
 
-use egui_demo_lib::DemoWindows;
+use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use instant::Instant;
-use wgpu::{util::DeviceExt, TextureUsages};
+use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
-    texture::{self, Texture},
+    texture::Texture,
     vertex::Vertex,
-    viewport::{ImageDisplay, ViewportDimensions},
+    viewport::{ImageDisplay, ScalingMode, ViewportDimensions},
 };
 
 use super::window::Window;
@@ -34,10 +34,16 @@ pub struct GraphicsContext {
     pub dim_buffer: wgpu::Buffer,
     pub dim_bind_group: wgpu::BindGroup,
     pub texture_layout: wgpu::BindGroupLayout,
+    pub image_display: ImageDisplay,
     pub image_display_buffer: wgpu::Buffer,
     pub image_display_bind_group: wgpu::BindGroup,
     pub last_frame: Instant,
-    pub egui: (Platform, RenderPass, DemoWindows),
+    pub egui: EguiContext,
+}
+
+pub struct EguiContext {
+    pub platform: Platform,
+    pub render_pass: RenderPass,
 }
 
 impl GraphicsContext {
@@ -105,10 +111,7 @@ impl GraphicsContext {
             ..Default::default()
         });
 
-        let egui_rpass = RenderPass::new(&device, surface_format, 1);
-
-        // Display the demo application that ships with egui.
-        let demo_app = egui_demo_lib::DemoWindows::default();
+        let render_pass = RenderPass::new(&device, surface_format, 1);
 
         let dims = ViewportDimensions::from_window(&window.raw);
 
@@ -145,6 +148,8 @@ impl GraphicsContext {
             pos: [100., 100.],
             size: 5.,
             gamma: 2.,
+            scaling_mode: ScalingMode::NearestNeighbour,
+            cross_correlation: false,
         };
 
         let image_display_layout =
@@ -180,13 +185,33 @@ impl GraphicsContext {
                         },
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
                 label: Some("image_display_bind_group_layout"),
             });
 
         let image_display_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("image_display_buf"),
-            contents: bytemuck::bytes_of(&image_display),
+            contents: bytemuck::bytes_of(&image_display.into_raw()),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -211,6 +236,22 @@ impl GraphicsContext {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &image_display_buffer,
+                        offset: 0,
+                        size: None,
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &image_display_buffer,
+                        offset: 0,
+                        size: None,
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &image_display_buffer,
                         offset: 0,
@@ -324,10 +365,11 @@ impl GraphicsContext {
             dim_buffer,
             dim_bind_group,
             texture_layout,
+            image_display,
             image_display_buffer,
             image_display_bind_group,
             last_frame,
-            egui: (platform, egui_rpass, demo_app),
+            egui: EguiContext { platform, render_pass },
         }
     }
 
@@ -340,7 +382,13 @@ impl GraphicsContext {
         }
     }
 
-    pub fn render(&mut self, texture: &Texture, window: &winit::window::Window) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(
+        &mut self,
+        texture: &Texture,
+        window: &winit::window::Window,
+    ) -> Result<(), wgpu::SurfaceError> {
+        self.image_display.bind(&self);
+
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -352,82 +400,8 @@ impl GraphicsContext {
                 label: Some("Render Encoder"),
             });
 
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 1.0,
-                            g: 1.0,
-                            b: 1.0,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_bind_group(0, &self.dim_bind_group, &[]);
-            render_pass.set_bind_group(1, &texture.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.image_display_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
-        }
-
-        {
-            self.egui
-                .0
-                .update_time(self.last_frame.elapsed().as_secs_f64());
-
-            self.egui.0.begin_frame();
-
-            // Draw the demo application.
-            self.egui.2.ui(&self.egui.0.context());
-
-            // End the UI frame. We could now handle the output and draw the UI with the backend.
-            let full_output = self.egui.0.end_frame(Some(&window));
-            let paint_jobs = self.egui.0.context().tessellate(full_output.shapes);
-
-            // Upload all resources for the GPU.
-            let screen_descriptor = ScreenDescriptor {
-                physical_width: self.config.width,
-                physical_height: self.config.height,
-                scale_factor: window.scale_factor() as f32,
-            };
-            let tdelta = full_output.textures_delta;
-            self.egui
-                .1
-                .add_textures(&self.device, &self.queue, &tdelta)
-                .expect("add texture ok");
-            self.egui
-                .1
-                .update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
-
-            // Record all render passes.
-            self.egui
-                .1
-                .execute(
-                    &mut encoder,
-                    &view,
-                    &paint_jobs,
-                    &screen_descriptor,
-                    None,
-                )
-                .unwrap();
-            // Submit the commands.
-
-            self.egui.1
-                .remove_textures(tdelta)
-                .expect("remove texture ok");
-        }
+        self.render_image(&mut encoder, &view, texture);
+        self.render_egui(&mut encoder, &view, window);
 
         self.queue.submit(iter::once(encoder.finish()));
         output.present();
@@ -435,28 +409,81 @@ impl GraphicsContext {
         Ok(())
     }
 
-    pub fn render_gui(&mut self, window: &winit::window::Window) -> Result<(), wgpu::SurfaceError> {
-        let output_frame = self.surface.get_current_texture()?;
+    pub fn render_image(
+        &self,
+        encoder: &mut CommandEncoder,
+        view: &TextureView,
+        texture: &Texture,
+    ) {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
 
-        let output_view = output_frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.dim_bind_group, &[]);
+        render_pass.set_bind_group(1, &texture.bind_group, &[]);
+        render_pass.set_bind_group(2, &self.image_display_bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+    }
 
-        // Begin to draw the UI frame.
-        self.egui.0.begin_frame();
+    pub fn render_egui(
+        &mut self,
+        encoder: &mut CommandEncoder,
+        view: &TextureView,
+        window: &winit::window::Window,
+    ) {
+        self.egui
+            .platform
+            .update_time(self.last_frame.elapsed().as_secs_f64());
 
-        // Draw the demo application.
-        self.egui.2.ui(&self.egui.0.context());
+        self.egui.platform.begin_frame();
+
+        let ctx = &self.egui.platform.context();
+
+        egui::Window::new("Image Settings").show(ctx, |ui| {
+            ui.add(Slider::new(&mut self.image_display.gamma, 0.0..=10.0).text("Gamma Correction"));
+            ui.add(Slider::new(&mut self.image_display.size, 0.0..=10.0).text("Image Size"));
+            ComboBox::from_label("")
+                .selected_text(format!("{:?}", &mut self.image_display.scaling_mode))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.image_display.scaling_mode,
+                        ScalingMode::NearestNeighbour,
+                        "Nearest Neighbour",
+                    );
+                    ui.selectable_value(
+                        &mut self.image_display.scaling_mode,
+                        ScalingMode::Bilinear,
+                        "Bi-Linear",
+                    );
+                });
+            ui.add(Checkbox::new(
+                &mut self.image_display.cross_correlation,
+                "Cross Correlation",
+            ))
+        });
 
         // End the UI frame. We could now handle the output and draw the UI with the backend.
-        let full_output = self.egui.0.end_frame(Some(&window));
-        let paint_jobs = self.egui.0.context().tessellate(full_output.shapes);
-
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("encoder"),
-            });
+        let full_output = self.egui.platform.end_frame(Some(&window));
+        let paint_jobs = self.egui.platform.context().tessellate(full_output.shapes);
 
         // Upload all resources for the GPU.
         let screen_descriptor = ScreenDescriptor {
@@ -466,35 +493,23 @@ impl GraphicsContext {
         };
         let tdelta = full_output.textures_delta;
         self.egui
-            .1
+            .render_pass
             .add_textures(&self.device, &self.queue, &tdelta)
             .expect("add texture ok");
         self.egui
-            .1
+            .render_pass
             .update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
 
         // Record all render passes.
         self.egui
-            .1
-            .execute(
-                &mut encoder,
-                &output_view,
-                &paint_jobs,
-                &screen_descriptor,
-                None,
-            )
+            .render_pass
+            .execute(encoder, &view, &paint_jobs, &screen_descriptor, None)
             .unwrap();
         // Submit the commands.
-        self.queue.submit(iter::once(encoder.finish()));
-
-        // Redraw egui
-        output_frame.present();
 
         self.egui
-            .1
+            .render_pass
             .remove_textures(tdelta)
             .expect("remove texture ok");
-
-        Ok(())
     }
 }

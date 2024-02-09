@@ -24,11 +24,10 @@ fn main() {
         .expect("Failed to load image");
 
     window.run(move |window, event, control_flow| {
-        context.egui.0.handle_event(&event);
+        context.egui.platform.handle_event(&event);
         match event {
             Event::RedrawRequested(_) => {
                 context.render(&texture, &window).unwrap();
-                // context.render_gui(&window).unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
