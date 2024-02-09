@@ -1,5 +1,9 @@
-use std::{iter, mem, num::NonZeroU64};
+use std::{default, iter, mem, num::NonZeroU64};
 
+use egui_demo_lib::DemoWindows;
+use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
+use egui_winit_platform::{Platform, PlatformDescriptor};
+use instant::Instant;
 use wgpu::{util::DeviceExt, TextureUsages};
 
 use crate::{
@@ -32,6 +36,8 @@ pub struct GraphicsContext {
     pub texture_layout: wgpu::BindGroupLayout,
     pub image_display_buffer: wgpu::Buffer,
     pub image_display_bind_group: wgpu::BindGroup,
+    pub last_frame: Instant,
+    pub egui: (Platform, RenderPass, DemoWindows),
 }
 
 impl GraphicsContext {
@@ -92,6 +98,18 @@ impl GraphicsContext {
         };
         surface.configure(&device, &config);
 
+        let platform = Platform::new(PlatformDescriptor {
+            physical_width: size.width as u32,
+            physical_height: size.height as u32,
+            scale_factor: window.raw.scale_factor(),
+            ..Default::default()
+        });
+
+        let egui_rpass = RenderPass::new(&device, surface_format, 1);
+
+        // Display the demo application that ships with egui.
+        let demo_app = egui_demo_lib::DemoWindows::default();
+
         let dims = ViewportDimensions::from_window(&window.raw);
 
         let dim_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -125,7 +143,7 @@ impl GraphicsContext {
 
         let image_display = ImageDisplay {
             pos: [100., 100.],
-            size: 1.,
+            size: 5.,
             gamma: 2.,
         };
 
@@ -293,6 +311,8 @@ impl GraphicsContext {
             usage: wgpu::BufferUsages::INDEX,
         });
 
+        let last_frame = Instant::now();
+
         Self {
             surface,
             device,
@@ -306,6 +326,8 @@ impl GraphicsContext {
             texture_layout,
             image_display_buffer,
             image_display_bind_group,
+            last_frame,
+            egui: (platform, egui_rpass, demo_app),
         }
     }
 
@@ -341,7 +363,7 @@ impl GraphicsContext {
                             r: 0.0,
                             g: 0.0,
                             b: 0.0,
-                            a: 0.0,
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -362,6 +384,67 @@ impl GraphicsContext {
 
         self.queue.submit(iter::once(encoder.finish()));
         output.present();
+
+        Ok(())
+    }
+
+    pub fn render_gui(&mut self, window: &winit::window::Window) -> Result<(), wgpu::SurfaceError> {
+        self.egui
+            .0
+            .update_time(self.last_frame.elapsed().as_secs_f64());
+
+        let output_frame = self.surface.get_current_texture()?;
+
+        let output_view = output_frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Begin to draw the UI frame.
+        self.egui.0.begin_frame();
+
+        // Draw the demo application.
+        self.egui.2.ui(&self.egui.0.context());
+
+        // End the UI frame. We could now handle the output and draw the UI with the backend.
+        let full_output = self.egui.0.end_frame(Some(&window));
+        let paint_jobs = self.egui.0.context().tessellate(full_output.shapes);
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("encoder"),
+        });
+
+        // Upload all resources for the GPU.
+        let screen_descriptor = ScreenDescriptor {
+            physical_width: self.config.width,
+            physical_height: self.config.height,
+            scale_factor: window.scale_factor() as f32,
+        };
+        let tdelta = full_output.textures_delta;
+        self.egui.1
+            .add_textures(&self.device, &self.queue, &tdelta)
+            .expect("add texture ok");
+        self.egui.1.update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
+
+        // Record all render passes.
+        self.egui.1
+            .execute(
+                &mut encoder,
+                &output_view,
+                &paint_jobs,
+                &screen_descriptor,
+                None
+                // Some(wgpu::Color::BLACK),
+            )
+            .unwrap();
+        // Submit the commands.
+        self.queue.submit(iter::once(encoder.finish()));
+
+        // Redraw egui
+        output_frame.present();
+
+        self.egui.1
+            .remove_textures(tdelta)
+            .expect("remove texture ok");
 
         Ok(())
     }

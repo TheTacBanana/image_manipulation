@@ -42,97 +42,10 @@ impl Window {
 
     pub fn run(
         self,
-        mut callback: impl 'static + FnMut(&winit::window::Window, WindowEvents) -> (),
+        mut callback: impl 'static + FnMut(&winit::window::Window, Event<'_, ()>) -> ControlFlow,
     ) {
         self.event_loop.run(move |event, _, control_flow| {
-            *control_flow = match event {
-                Event::WindowEvent {
-                    event: WindowEvent::Resized(size),
-                    ..
-                } => {
-                    callback(
-                        &self.raw,
-                        WindowEvents::Resized {
-                            width: size.width,
-                            height: size.height,
-                        },
-                    );
-                    ControlFlow::Poll
-                }
-                Event::WindowEvent {
-                    event:
-                        WindowEvent::KeyboardInput {
-                            input:
-                                KeyboardInput {
-                                    state,
-                                    virtual_keycode,
-                                    ..
-                                },
-                            ..
-                        },
-                    ..
-                } => {
-                    callback(
-                        &self.raw,
-                        WindowEvents::Input {
-                            event: InputEvent::Keyboard {
-                                state,
-                                virtual_keycode,
-                            },
-                        },
-                    );
-                    ControlFlow::Poll
-                }
-                Event::WindowEvent {
-                    event: WindowEvent::MouseInput { state, button, .. },
-                    ..
-                } => {
-                    callback(
-                        &self.raw,
-                        WindowEvents::Input {
-                            event: InputEvent::MouseClick { state, button },
-                        },
-                    );
-                    ControlFlow::Poll
-                }
-                Event::DeviceEvent {
-                    event: DeviceEvent::MouseMotion { delta },
-                    ..
-                } => {
-                    callback(
-                        &self.raw,
-                        WindowEvents::Input {
-                            event: InputEvent::MouseDelta {
-                                delta: cgmath::Vector2 {
-                                    x: delta.0 as f32,
-                                    y: delta.1 as f32,
-                                },
-                            },
-                        },
-                    );
-                    ControlFlow::Poll
-                }
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    callback(&self.raw, WindowEvents::Exit);
-                    ControlFlow::Exit
-                }
-                Event::RedrawRequested(_) => {
-                    callback(&self.raw, WindowEvents::Draw);
-                    ControlFlow::Poll
-                }
-                Event::LoopDestroyed => {
-                    callback(&self.raw, WindowEvents::Exit);
-                    ControlFlow::Exit
-                }
-                Event::MainEventsCleared => {
-                    self.raw.request_redraw();
-                    ControlFlow::Poll
-                }
-                _ => ControlFlow::Poll,
-            }
+            *control_flow = callback(&self.raw, event);
         });
     }
 }
