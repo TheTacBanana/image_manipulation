@@ -42,10 +42,10 @@ impl Window {
 
     pub fn run(
         self,
-        mut callback: impl 'static + FnMut(&winit::window::Window, Event<'_, ()>) -> ControlFlow,
+        mut callback: impl 'static + FnMut(&winit::window::Window, Event<'_, ()>, &mut ControlFlow) -> (),
     ) {
-        self.event_loop.run(move |event, _, control_flow| {
-            *control_flow = callback(&self.raw, event);
+        self.event_loop.run(move |event, _, mut control_flow| {
+            callback(&self.raw, event, &mut control_flow);
         });
     }
 }

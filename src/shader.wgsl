@@ -58,7 +58,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sample = textureSample(t_diffuse, s_diffuse, tex_pos);
 
     if tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0 {
-        return vec4<f32>(0.0);
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     } else {
         return gamma_correction(sample);
     };

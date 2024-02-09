@@ -360,9 +360,9 @@ impl GraphicsContext {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -432,8 +432,7 @@ impl GraphicsContext {
                 &output_view,
                 &paint_jobs,
                 &screen_descriptor,
-                None
-                // Some(wgpu::Color::BLACK),
+                None,
             )
             .unwrap();
         // Submit the commands.

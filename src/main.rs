@@ -23,28 +23,27 @@ fn main() {
         .and_then(|bytes| Texture::from_bytes(&context, &bytes, ""))
         .expect("Failed to load image");
 
-    window.run(move |window, event| {
+    window.run(move |window, event, control_flow| {
         context.egui.0.handle_event(&event);
         match event {
+            Event::RedrawRequested(_) => {
+                context.render(&texture).unwrap();
+                context.render_gui(&window).unwrap();
+            }
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
                 ..
             } => {
                 context.resize(size.width, size.height);
-                ControlFlow::Poll
             }
-            Event::RedrawRequested(_) => {
-                context.render(&texture).unwrap();
-                context.render_gui(&window).unwrap();
-                ControlFlow::Poll
-            }
-            Event::WindowEvent {
+            Event::LoopDestroyed | Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => ControlFlow::Exit,
-            Event::LoopDestroyed => ControlFlow::Exit,
-            Event::MainEventsCleared => ControlFlow::Poll,
-            _ => ControlFlow::Poll,
+            } => *control_flow = ControlFlow::Exit,
+            Event::MainEventsCleared | Event::UserEvent(_) => {
+                window.request_redraw();
+            }
+            _ => ()
         }
     });
 }
