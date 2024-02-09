@@ -27,8 +27,8 @@ fn main() {
         context.egui.0.handle_event(&event);
         match event {
             Event::RedrawRequested(_) => {
-                context.render(&texture).unwrap();
-                context.render_gui(&window).unwrap();
+                context.render(&texture, &window).unwrap();
+                // context.render_gui(&window).unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),

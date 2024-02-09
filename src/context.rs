@@ -340,7 +340,7 @@ impl GraphicsContext {
         }
     }
 
-    pub fn render(&mut self, texture: &Texture) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, texture: &Texture, window: &winit::window::Window) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -382,6 +382,53 @@ impl GraphicsContext {
             render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
         }
 
+        {
+            self.egui
+                .0
+                .update_time(self.last_frame.elapsed().as_secs_f64());
+
+            self.egui.0.begin_frame();
+
+            // Draw the demo application.
+            self.egui.2.ui(&self.egui.0.context());
+
+            // End the UI frame. We could now handle the output and draw the UI with the backend.
+            let full_output = self.egui.0.end_frame(Some(&window));
+            let paint_jobs = self.egui.0.context().tessellate(full_output.shapes);
+
+            // Upload all resources for the GPU.
+            let screen_descriptor = ScreenDescriptor {
+                physical_width: self.config.width,
+                physical_height: self.config.height,
+                scale_factor: window.scale_factor() as f32,
+            };
+            let tdelta = full_output.textures_delta;
+            self.egui
+                .1
+                .add_textures(&self.device, &self.queue, &tdelta)
+                .expect("add texture ok");
+            self.egui
+                .1
+                .update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
+
+            // Record all render passes.
+            self.egui
+                .1
+                .execute(
+                    &mut encoder,
+                    &view,
+                    &paint_jobs,
+                    &screen_descriptor,
+                    None,
+                )
+                .unwrap();
+            // Submit the commands.
+
+            self.egui.1
+                .remove_textures(tdelta)
+                .expect("remove texture ok");
+        }
+
         self.queue.submit(iter::once(encoder.finish()));
         output.present();
 
@@ -389,10 +436,6 @@ impl GraphicsContext {
     }
 
     pub fn render_gui(&mut self, window: &winit::window::Window) -> Result<(), wgpu::SurfaceError> {
-        self.egui
-            .0
-            .update_time(self.last_frame.elapsed().as_secs_f64());
-
         let output_frame = self.surface.get_current_texture()?;
 
         let output_view = output_frame
@@ -409,9 +452,11 @@ impl GraphicsContext {
         let full_output = self.egui.0.end_frame(Some(&window));
         let paint_jobs = self.egui.0.context().tessellate(full_output.shapes);
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("encoder"),
+            });
 
         // Upload all resources for the GPU.
         let screen_descriptor = ScreenDescriptor {
@@ -420,13 +465,17 @@ impl GraphicsContext {
             scale_factor: window.scale_factor() as f32,
         };
         let tdelta = full_output.textures_delta;
-        self.egui.1
+        self.egui
+            .1
             .add_textures(&self.device, &self.queue, &tdelta)
             .expect("add texture ok");
-        self.egui.1.update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
+        self.egui
+            .1
+            .update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
 
         // Record all render passes.
-        self.egui.1
+        self.egui
+            .1
             .execute(
                 &mut encoder,
                 &output_view,
@@ -441,7 +490,8 @@ impl GraphicsContext {
         // Redraw egui
         output_frame.present();
 
-        self.egui.1
+        self.egui
+            .1
             .remove_textures(tdelta)
             .expect("remove texture ok");
 
