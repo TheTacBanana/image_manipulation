@@ -1,3 +1,5 @@
+use egui::Image;
+
 use crate::context::GraphicsContext;
 
 #[repr(C)]
@@ -38,6 +40,20 @@ pub struct ImageDisplay {
     pub gamma: f32,
     pub scaling_mode: ScalingMode,
     pub cross_correlation: bool,
+    pub updated: bool,
+}
+
+impl Default for ImageDisplay {
+    fn default() -> Self {
+        ImageDisplay {
+            pos: [100., 100.],
+            size: 5.,
+            gamma: 2.,
+            scaling_mode: ScalingMode::NearestNeighbour,
+            cross_correlation: false,
+            updated: true,
+        }
+    }
 }
 
 #[repr(C)]
@@ -64,10 +80,17 @@ impl ImageDisplay {
         }
     }
 
-    pub fn bind(&self, context: &GraphicsContext) {
-        context
-            .queue
-            .write_buffer(&context.image_display_buffer, 0, bytemuck::bytes_of(&self.into_raw()))
+    pub fn update(&mut self) {
+        self.updated = true;
+    }
+
+    pub fn bind(&mut self, context: &GraphicsContext) {
+        if self.updated {
+            context
+                .queue
+                .write_buffer(&context.image_display_buffer, 0, bytemuck::bytes_of(&self.into_raw()));
+            self.updated = false;
+        }
     }
 }
 

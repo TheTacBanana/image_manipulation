@@ -1,5 +1,6 @@
 use std::iter;
 
+use cgmath::{Vector2, Zero};
 use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -7,9 +8,7 @@ use instant::Instant;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
-    texture::Texture,
-    vertex::Vertex,
-    viewport::{ImageDisplay, ScalingMode, ViewportDimensions},
+    input::MouseInput, texture::Texture, vertex::Vertex, viewport::{ImageDisplay, ScalingMode, ViewportDimensions}
 };
 
 use super::window::Window;
@@ -39,6 +38,8 @@ pub struct GraphicsContext {
     pub image_display_bind_group: wgpu::BindGroup,
     pub last_frame: Instant,
     pub egui: EguiContext,
+    pub mouse_pressed: bool,
+    pub last_mouse: Vector2<f32>
 }
 
 pub struct EguiContext {
@@ -144,13 +145,7 @@ impl GraphicsContext {
             label: Some("dim_bind_group"),
         });
 
-        let image_display = ImageDisplay {
-            pos: [100., 100.],
-            size: 5.,
-            gamma: 2.,
-            scaling_mode: ScalingMode::NearestNeighbour,
-            cross_correlation: false,
-        };
+        let image_display = ImageDisplay::default();
 
         let image_display_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -370,6 +365,8 @@ impl GraphicsContext {
             image_display_bind_group,
             last_frame,
             egui: EguiContext { platform, render_pass },
+            mouse_pressed: false,
+            last_mouse: Vector2::zero(),
         }
     }
 
@@ -387,7 +384,11 @@ impl GraphicsContext {
         texture: &Texture,
         window: &winit::window::Window,
     ) -> Result<(), wgpu::SurfaceError> {
-        self.image_display.bind(&self);
+        {
+            let mut take = std::mem::take(&mut self.image_display);
+            take.bind(&self);
+            self.image_display = take;
+        }
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -405,6 +406,8 @@ impl GraphicsContext {
 
         self.queue.submit(iter::once(encoder.finish()));
         output.present();
+
+        self.last_frame = Instant::now();
 
         Ok(())
     }
@@ -505,11 +508,26 @@ impl GraphicsContext {
             .render_pass
             .execute(encoder, &view, &paint_jobs, &screen_descriptor, None)
             .unwrap();
-        // Submit the commands.
 
+        // Submit the commands.
         self.egui
             .render_pass
             .remove_textures(tdelta)
             .expect("remove texture ok");
+    }
+
+    pub fn process_input(&mut self, input : MouseInput) {
+        match input {
+            MouseInput::ButtonPressed => self.mouse_pressed = true,
+            MouseInput::ButtonReleased => self.mouse_pressed = false,
+            MouseInput::Position(pos) => {
+                if self.mouse_pressed {
+                    self.image_display.pos[0] += pos.x - self.last_mouse.x;
+                    self.image_display.pos[1] += pos.y - self.last_mouse.y;
+                    self.image_display.update()
+                }
+                self.last_mouse = pos;
+            },
+        }
     }
 }
