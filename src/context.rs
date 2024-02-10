@@ -1,7 +1,7 @@
 use std::iter;
 
 use cgmath::{Vector2, Zero};
-use egui::{Checkbox, ComboBox, Slider};
+use egui::{Checkbox, ComboBox, Slider, TextBuffer};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use instant::Instant;
@@ -39,7 +39,8 @@ pub struct GraphicsContext {
     pub last_frame: Instant,
     pub egui: EguiContext,
     pub mouse_pressed: bool,
-    pub last_mouse: Vector2<f32>
+    pub last_mouse: Vector2<f32>,
+    pub mouse_over_ui: bool,
 }
 
 pub struct EguiContext {
@@ -367,6 +368,7 @@ impl GraphicsContext {
             egui: EguiContext { platform, render_pass },
             mouse_pressed: false,
             last_mouse: Vector2::zero(),
+            mouse_over_ui: false,
         }
     }
 
@@ -461,7 +463,12 @@ impl GraphicsContext {
 
         let ctx = &self.egui.platform.context();
 
+        let mut x_pos = self.image_display.pos[0].to_string();
+        let mut y_pos = self.image_display.pos[1].to_string();
+
         egui::Window::new("Image Settings").show(ctx, |ui| {
+            ui.add(egui::TextEdit::singleline(&mut x_pos));
+            ui.add(egui::TextEdit::singleline(&mut y_pos));
             ui.add(Slider::new(&mut self.image_display.gamma, 0.0..=10.0).text("Gamma Correction"));
             ui.add(Slider::new(&mut self.image_display.size, 0.0..=10.0).text("Image Size"));
             ComboBox::from_label("")
@@ -481,8 +488,17 @@ impl GraphicsContext {
             ui.add(Checkbox::new(
                 &mut self.image_display.cross_correlation,
                 "Cross Correlation",
-            ))
+            ));
+
+            self.mouse_over_ui = ui.ui_contains_pointer();
         });
+
+        if let Ok(x_pos) = x_pos.parse::<f32>() {
+            self.image_display.pos[0] = x_pos;
+        }
+        if let Ok(y_pos) = y_pos.parse::<f32>() {
+            self.image_display.pos[1] = y_pos;
+        }
 
         // End the UI frame. We could now handle the output and draw the UI with the backend.
         let full_output = self.egui.platform.end_frame(Some(&window));
@@ -521,12 +537,15 @@ impl GraphicsContext {
             MouseInput::ButtonPressed => self.mouse_pressed = true,
             MouseInput::ButtonReleased => self.mouse_pressed = false,
             MouseInput::Position(pos) => {
-                if self.mouse_pressed {
+                if self.mouse_pressed && !self.mouse_over_ui {
                     self.image_display.pos[0] += pos.x - self.last_mouse.x;
                     self.image_display.pos[1] += pos.y - self.last_mouse.y;
-                    self.image_display.update()
                 }
                 self.last_mouse = pos;
+            },
+            MouseInput::Scroll(scroll) => {
+                self.image_display.size += scroll / 4.0;
+                self.image_display.size = f32::max(self.image_display.size, 0.001);
             },
         }
     }

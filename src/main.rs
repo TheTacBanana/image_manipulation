@@ -3,16 +3,16 @@ use input::MouseInput;
 use texture::{load_bytes, Texture};
 use window::{Window, WindowEvents};
 use winit::{
-    event::{DeviceEvent, Event, MouseButton, WindowEvent},
+    event::{DeviceEvent, Event, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::ControlFlow,
 };
 
 pub mod context;
+pub mod input;
 pub mod texture;
 pub mod vertex;
 pub mod viewport;
 pub mod window;
-pub mod input;
 
 fn main() {
     let window = Window::new();
@@ -38,22 +38,37 @@ fn main() {
                 context.resize(size.width, size.height);
             }
             Event::WindowEvent {
-                window_id,
-                event : WindowEvent::CursorMoved { position, .. },
-            } => {
-                context.process_input(MouseInput::Position(
-                    cgmath::Vector2 { x: position.x as f32, y: position.y as f32 }
-                ))
-            }
-            Event::WindowEvent {
-                event: WindowEvent::MouseInput { state, button : MouseButton::Left, .. },
+                event: WindowEvent::CursorMoved { position, .. },
                 ..
-            } => {
-                match state {
-                    winit::event::ElementState::Pressed => context.process_input(MouseInput::ButtonPressed),
-                    winit::event::ElementState::Released => context.process_input(MouseInput::ButtonReleased),
+            } => context.process_input(MouseInput::Position(cgmath::Vector2 {
+                x: position.x as f32,
+                y: position.y as f32,
+            })),
+            Event::WindowEvent {
+                event: WindowEvent::MouseWheel { device_id, delta, phase, modifiers },
+                ..
+            } => context.process_input(
+                match delta {
+                    MouseScrollDelta::LineDelta(x, y) => MouseInput::Scroll(y),
+                    MouseScrollDelta::PixelDelta(_) => panic!("Pixel delta not implemented"),
                 }
-            }
+            ),
+            Event::WindowEvent {
+                event:
+                    WindowEvent::MouseInput {
+                        state,
+                        button: MouseButton::Left,
+                        ..
+                    },
+                ..
+            } => match state {
+                winit::event::ElementState::Pressed => {
+                    context.process_input(MouseInput::ButtonPressed)
+                }
+                winit::event::ElementState::Released => {
+                    context.process_input(MouseInput::ButtonReleased)
+                }
+            },
             Event::LoopDestroyed
             | Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

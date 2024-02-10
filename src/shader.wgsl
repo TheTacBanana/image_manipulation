@@ -38,9 +38,13 @@ fn vs_main(
 
 // Fragment shader
 
+fn screen_center_pos() -> vec2<f32> {
+    return dims / 2.0;
+}
+
 fn screen_pos_to_tex_coord(pos : vec2<f32>) -> vec2<f32> {
     let tex_size = vec2<f32>(textureDimensions(t_diffuse));
-    return floor((pos.xy - image_display.pos) / image_display.scale) / tex_size;
+    return floor((pos.xy - image_display.pos + (tex_size * image_display.scale / 2.0)) / image_display.scale) / tex_size;
 }
 
 fn gamma_correction(colour : vec4<f32>) -> vec4<f32> {
