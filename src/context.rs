@@ -469,7 +469,7 @@ impl GraphicsContext {
         egui::Window::new("Image Settings").show(ctx, |ui| {
             ui.add(egui::TextEdit::singleline(&mut x_pos));
             ui.add(egui::TextEdit::singleline(&mut y_pos));
-            ui.add(Slider::new(&mut self.image_display.gamma, 0.0..=10.0).text("Gamma Correction"));
+            ui.add(Slider::new(&mut self.image_display.gamma, 0.0..=5.0).text("Gamma Correction"));
             ui.add(Slider::new(&mut self.image_display.size, 0.0..=10.0).text("Image Size"));
             ComboBox::from_label("")
                 .selected_text(format!("{:?}", &mut self.image_display.scaling_mode))
@@ -544,7 +544,7 @@ impl GraphicsContext {
                 self.last_mouse = pos;
             },
             MouseInput::Scroll(scroll) => {
-                self.image_display.size += scroll / 4.0;
+                self.image_display.size += scroll * (self.image_display.size * self.image_display.size + 1.1).log10();
                 self.image_display.size = f32::max(self.image_display.size, 0.001);
             },
         }
