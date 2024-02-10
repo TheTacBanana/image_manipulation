@@ -1,6 +1,6 @@
 use context::GraphicsContext;
 use egui::epaint::text::PASSWORD_REPLACEMENT_CHAR;
-use input::MouseInput;
+use input::CursorEvent;
 use texture::{load_bytes, Texture};
 use window::{Window, WindowEvents};
 use winit::{
@@ -32,9 +32,6 @@ pub fn run() {
     let window = Window::new();
     let mut context = pollster::block_on(GraphicsContext::new(&window));
 
-    // let args = std::env::args().collect::<Vec<_>>();
-    // let image_path = args.get(1).expect("Please specify image path");
-
     let texture = Texture::from_bytes(&context, include_bytes!("../raytrace.jpg"), "").unwrap();
 
     window.run(move |window, event, control_flow| {
@@ -49,12 +46,12 @@ pub fn run() {
             } => {
                 context.resize(size.width, size.height);
             }
-
             Event::WindowEvent {
                 event:
                     WindowEvent::Touch(Touch {
                         location: position,
                         phase,
+                        id,
                         ..
                     }),
                 ..
@@ -64,16 +61,16 @@ pub fn run() {
                     y: position.y as f32,
                 };
                 context.process_input(match phase {
-                    TouchPhase::Started => MouseInput::StartTouch(pos),
-                    TouchPhase::Moved => MouseInput::Position(pos),
-                    TouchPhase::Ended => MouseInput::EndTouch,
+                    TouchPhase::Started => CursorEvent::StartTouch(id, pos),
+                    TouchPhase::Moved => CursorEvent::TouchMove(id, pos),
+                    TouchPhase::Ended => CursorEvent::EndTouch(id),
                     TouchPhase::Cancelled => return,
                 });
             }
             Event::WindowEvent {
                 event: WindowEvent::CursorMoved { position, .. },
                 ..
-            } => context.process_input(MouseInput::Position(cgmath::Vector2 {
+            } => context.process_input(CursorEvent::Position(cgmath::Vector2 {
                 x: position.x as f32,
                 y: position.y as f32,
             })),
@@ -81,8 +78,8 @@ pub fn run() {
                 event: WindowEvent::MouseWheel { delta, .. },
                 ..
             } => context.process_input(match delta {
-                MouseScrollDelta::LineDelta(_, y) => MouseInput::Scroll(y),
-                MouseScrollDelta::PixelDelta(delta) => MouseInput::Scroll({
+                MouseScrollDelta::LineDelta(_, y) => CursorEvent::Scroll(y),
+                MouseScrollDelta::PixelDelta(delta) => CursorEvent::Scroll({
                     if delta.y > 0.0 {
                         1.0
                     } else if delta.y < 0.0 {
@@ -102,10 +99,10 @@ pub fn run() {
                 ..
             } => match state {
                 winit::event::ElementState::Pressed => {
-                    context.process_input(MouseInput::ButtonPressed)
+                    context.process_input(CursorEvent::ButtonPressed)
                 }
                 winit::event::ElementState::Released => {
-                    context.process_input(MouseInput::ButtonReleased)
+                    context.process_input(CursorEvent::ButtonReleased)
                 }
             },
             Event::LoopDestroyed

@@ -1,6 +1,6 @@
 use std::iter;
 
-use cgmath::{Vector2, Zero};
+use cgmath::{InnerSpace, MetricSpace, Vector2, Zero};
 use egui::{Checkbox, ComboBox, Slider, TextBuffer};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -8,7 +8,7 @@ use instant::Instant;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
-    input::MouseInput,
+    input::{CursorEvent, InputContext},
     texture::Texture,
     vertex::Vertex,
     viewport::{ImageDisplay, ScalingMode, ViewportDimensions},
@@ -41,9 +41,7 @@ pub struct GraphicsContext {
     pub image_display_bind_group: wgpu::BindGroup,
     pub last_frame: Instant,
     pub egui: EguiContext,
-    pub mouse_pressed: bool,
-    pub last_mouse: Vector2<f32>,
-    pub mouse_over_ui: bool,
+    pub input: InputContext,
 }
 
 pub struct EguiContext {
@@ -390,9 +388,7 @@ impl GraphicsContext {
                 platform,
                 render_pass,
             },
-            mouse_pressed: false,
-            last_mouse: Vector2::zero(),
-            mouse_over_ui: false,
+            input: InputContext::default(),
         }
     }
 
@@ -518,7 +514,7 @@ impl GraphicsContext {
                     "Cross Correlation",
                 ));
 
-                self.mouse_over_ui = ui.ui_contains_pointer();
+                self.input.mouse_over_ui = ui.ui_contains_pointer();
             });
 
         if let Ok(x_pos) = x_pos.parse::<f32>() {
@@ -563,22 +559,54 @@ impl GraphicsContext {
             .expect("remove texture ok");
     }
 
-    pub fn process_input(&mut self, input: MouseInput) {
-        match input {
-            MouseInput::StartTouch(pos) => {
-                self.last_mouse = pos;
-                self.mouse_pressed = true && !self.mouse_over_ui
-            },
-            MouseInput::ButtonPressed => self.mouse_pressed = true && !self.mouse_over_ui,
-            MouseInput::ButtonReleased | MouseInput::EndTouch => self.mouse_pressed = false,
-            MouseInput::Position(pos) => {
-                if self.mouse_pressed {
-                    self.image_display.pos[0] += pos.x - self.last_mouse.x;
-                    self.image_display.pos[1] += pos.y - self.last_mouse.y;
-                }
-                self.last_mouse = pos;
+    pub fn process_input(&mut self, event: CursorEvent) {
+        let input = &mut self.input;
+        match event {
+            CursorEvent::StartTouch(id, pos) => {
+                input.start_touch(id, pos);
             }
-            MouseInput::Scroll(scroll) => {
+            CursorEvent::TouchMove(id, pos) => {
+                let delta = input.update_touch(id, pos).unwrap();
+
+                if !input.mouse_over_ui {
+
+                    match input.touch_count() {
+                        1 => {
+                            self.image_display.pos[0] += delta.x;
+                            self.image_display.pos[1] += delta.y;
+                        }
+                        2 => {
+                            let ts = input.active_touches();
+                            let (one, two) = (ts[0], ts[1]);
+
+                            let between = two - one;
+                            let m1 = between.magnitude();
+                            let m2 = (between + delta).magnitude();
+
+                            self.image_display.size -= ((m2 / m1) - 1.0);
+                            self.image_display.size = f32::max(self.image_display.size, 0.001);
+                        }
+                        _ => ()
+                    }
+                }
+            },
+            CursorEvent::EndTouch(id) => {
+                input.end_touch(id);
+            }
+            CursorEvent::ButtonPressed => {
+                input.mouse_pressed = true && !input.mouse_over_ui
+            }
+            CursorEvent::ButtonReleased => {
+                input.mouse_pressed = false;
+            }
+            CursorEvent::Position(pos) => {
+                if input.mouse_pressed {
+                    self.image_display.pos[0] += pos.x - input.last_mouse_pos.x;
+                    self.image_display.pos[1] += pos.y - input.last_mouse_pos.y;
+                }
+                input.last_mouse_pos = pos;
+            }
+            CursorEvent::Scroll(scroll) => {
                 self.image_display.size +=
                     scroll * (self.image_display.size * self.image_display.size + 1.1).log10();
                 self.image_display.size = f32::max(self.image_display.size, 0.001);
