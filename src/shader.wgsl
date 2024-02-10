@@ -12,6 +12,8 @@ struct ImageDisplay {
     gamma: f32,
     scaling_mode: u32,
     cross_correlation: u32,
+    _pad1: f32,
+    _pad2: f32,
 };
 
 @group(2) @binding(0)

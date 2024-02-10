@@ -6,16 +6,16 @@ use image::GenericImageView;
 pub async fn load_bytes(path: &str) -> Result<Vec<u8>> {
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
-            // let url = format_url(file_name);
+            // let url = format_url(path);
             // let data = reqwest::get(url)
-                // .await?
-                // .bytes()
-                // .await?
-                // .to_vec();
+            //     .await?
+            //     .bytes()
+            //     .await?
+            //     .to_vec();
         } else {
-            let data = std::fs::read(path)?;
         }
     }
+    let data = std::fs::read(path)?;
     Ok(data)
 }
 

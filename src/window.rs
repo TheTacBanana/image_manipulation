@@ -3,6 +3,7 @@ use winit::{
         DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
     },
     event_loop::{ControlFlow, EventLoop},
+    dpi::PhysicalSize
 };
 
 #[derive(Debug)]
@@ -37,6 +38,23 @@ impl Window {
     pub fn new() -> Self {
         let event_loop = EventLoop::new();
         let raw = winit::window::Window::new(&event_loop).expect("Failed to create Window");
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            use winit::platform::web::WindowExtWebSys;
+
+            web_sys::window()
+                .and_then(|win| win.document())
+                .and_then(|doc| {
+                    let dst = doc.get_element_by_id("main-body")?;
+                    raw.set_inner_size(PhysicalSize::new(dst.client_width() as f32, dst.client_height() as f32));
+                    let canvas = web_sys::Element::from(raw.canvas());
+                    dst.append_child(&canvas).ok()?;
+                    Some(())
+                })
+                .expect("Couldn't append canvas to document body.");
+        }
+
         Self { event_loop, raw }
     }
 

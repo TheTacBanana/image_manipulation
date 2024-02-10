@@ -8,7 +8,10 @@ use instant::Instant;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
-    input::MouseInput, texture::Texture, vertex::Vertex, viewport::{ImageDisplay, ScalingMode, ViewportDimensions}
+    input::MouseInput,
+    texture::Texture,
+    vertex::Vertex,
+    viewport::{ImageDisplay, ScalingMode, ViewportDimensions},
 };
 
 use super::window::Window;
@@ -201,6 +204,16 @@ impl GraphicsContext {
                         },
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
                 label: Some("image_display_bind_group_layout"),
             });
@@ -248,6 +261,14 @@ impl GraphicsContext {
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &image_display_buffer,
+                        offset: 0,
+                        size: None,
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &image_display_buffer,
                         offset: 0,
@@ -365,7 +386,10 @@ impl GraphicsContext {
             image_display_buffer,
             image_display_bind_group,
             last_frame,
-            egui: EguiContext { platform, render_pass },
+            egui: EguiContext {
+                platform,
+                render_pass,
+            },
             mouse_pressed: false,
             last_mouse: Vector2::zero(),
             mouse_over_ui: false,
@@ -466,32 +490,36 @@ impl GraphicsContext {
         let mut x_pos = self.image_display.pos[0].to_string();
         let mut y_pos = self.image_display.pos[1].to_string();
 
-        egui::Window::new("Image Settings").show(ctx, |ui| {
-            ui.add(egui::TextEdit::singleline(&mut x_pos));
-            ui.add(egui::TextEdit::singleline(&mut y_pos));
-            ui.add(Slider::new(&mut self.image_display.gamma, 0.0..=5.0).text("Gamma Correction"));
-            ui.add(Slider::new(&mut self.image_display.size, 0.0..=10.0).text("Image Size"));
-            ComboBox::from_label("")
-                .selected_text(format!("{:?}", &mut self.image_display.scaling_mode))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.image_display.scaling_mode,
-                        ScalingMode::NearestNeighbour,
-                        "Nearest Neighbour",
-                    );
-                    ui.selectable_value(
-                        &mut self.image_display.scaling_mode,
-                        ScalingMode::Bilinear,
-                        "Bi-Linear",
-                    );
-                });
-            ui.add(Checkbox::new(
-                &mut self.image_display.cross_correlation,
-                "Cross Correlation",
-            ));
+        egui::Window::new("Image Settings")
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.add(egui::TextEdit::singleline(&mut x_pos));
+                ui.add(egui::TextEdit::singleline(&mut y_pos));
+                ui.add(
+                    Slider::new(&mut self.image_display.gamma, 0.0..=5.0).text("Gamma Correction"),
+                );
+                ui.add(Slider::new(&mut self.image_display.size, 0.0..=10.0).text("Image Size"));
+                ComboBox::from_label("")
+                    .selected_text(format!("{:?}", &mut self.image_display.scaling_mode))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.image_display.scaling_mode,
+                            ScalingMode::NearestNeighbour,
+                            "Nearest Neighbour",
+                        );
+                        ui.selectable_value(
+                            &mut self.image_display.scaling_mode,
+                            ScalingMode::Bilinear,
+                            "Bi-Linear",
+                        );
+                    });
+                ui.add(Checkbox::new(
+                    &mut self.image_display.cross_correlation,
+                    "Cross Correlation",
+                ));
 
-            self.mouse_over_ui = ui.ui_contains_pointer();
-        });
+                self.mouse_over_ui = ui.ui_contains_pointer();
+            });
 
         if let Ok(x_pos) = x_pos.parse::<f32>() {
             self.image_display.pos[0] = x_pos;
@@ -515,9 +543,12 @@ impl GraphicsContext {
             .render_pass
             .add_textures(&self.device, &self.queue, &tdelta)
             .expect("add texture ok");
-        self.egui
-            .render_pass
-            .update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
+        self.egui.render_pass.update_buffers(
+            &self.device,
+            &self.queue,
+            &paint_jobs,
+            &screen_descriptor,
+        );
 
         // Record all render passes.
         self.egui
@@ -532,21 +563,26 @@ impl GraphicsContext {
             .expect("remove texture ok");
     }
 
-    pub fn process_input(&mut self, input : MouseInput) {
+    pub fn process_input(&mut self, input: MouseInput) {
         match input {
-            MouseInput::ButtonPressed => self.mouse_pressed = true,
-            MouseInput::ButtonReleased => self.mouse_pressed = false,
+            MouseInput::StartTouch(pos) => {
+                self.last_mouse = pos;
+                self.mouse_pressed = true && !self.mouse_over_ui
+            },
+            MouseInput::ButtonPressed => self.mouse_pressed = true && !self.mouse_over_ui,
+            MouseInput::ButtonReleased | MouseInput::EndTouch => self.mouse_pressed = false,
             MouseInput::Position(pos) => {
-                if self.mouse_pressed && !self.mouse_over_ui {
+                if self.mouse_pressed {
                     self.image_display.pos[0] += pos.x - self.last_mouse.x;
                     self.image_display.pos[1] += pos.y - self.last_mouse.y;
                 }
                 self.last_mouse = pos;
-            },
+            }
             MouseInput::Scroll(scroll) => {
-                self.image_display.size += scroll * (self.image_display.size * self.image_display.size + 1.1).log10();
+                self.image_display.size +=
+                    scroll * (self.image_display.size * self.image_display.size + 1.1).log10();
                 self.image_display.size = f32::max(self.image_display.size, 0.001);
-            },
+            }
         }
     }
 }

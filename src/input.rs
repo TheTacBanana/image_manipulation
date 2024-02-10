@@ -4,6 +4,8 @@ use cgmath::Vector2;
 pub enum MouseInput {
     ButtonPressed,
     ButtonReleased,
+    StartTouch(Vector2<f32>),
+    EndTouch,
     Position(Vector2<f32>),
     Scroll(f32),
 }

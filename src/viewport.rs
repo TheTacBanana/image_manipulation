@@ -62,6 +62,7 @@ pub struct RawImageDisplay {
     pub gamma: f32,
     pub scaling_mode: u32,
     pub cross_correlation: u32,
+    pub _pad: [f32; 2],
 }
 
 impl ImageDisplay {
@@ -75,6 +76,7 @@ impl ImageDisplay {
                 true => 1,
                 false => 0,
             },
+            _pad: Default::default()
         }
     }
 
