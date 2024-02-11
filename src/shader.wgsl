@@ -12,8 +12,7 @@ struct ImageDisplay {
     gamma: f32,
     scaling_mode: u32,
     cross_correlation: u32,
-    _pad1: f32,
-    _pad2: f32,
+    clear_colour: vec4<f32>
 };
 
 @group(2) @binding(0)
@@ -40,36 +39,30 @@ fn vs_main(
 
 // Fragment shader
 
-fn div(x: f32, y: f32) -> f32{
-    return floor(x / y) * y;
-}
-
-fn div_vec(x: vec2<f32>, y: vec2<f32>) -> vec2<f32>{
-    return floor(x / y) * y;
+fn tex_size() -> vec2<f32> {
+    return vec2<f32>(textureDimensions(t_diffuse));
 }
 
 fn nearest_neighbour(pos: vec2<f32>) -> vec4<f32> {
-    let tex_size = vec2<f32>(textureDimensions(t_diffuse));
     let tex_pos = screen_pos_to_tex_coord(pos);
+    let real_step = 1.0 / tex_size();
 
-    let real_step = 1.0 / tex_size;
+    let top_left = floor(tex_pos / real_step);
+    let rounded = round((tex_pos % real_step) / real_step - vec2<f32>(0.5));
+    let sample_coord = vec2<i32>(top_left + rounded);
 
-    let top_left = floor(tex_pos / real_step) * real_step;
-    let rounded = round((tex_pos % real_step) / real_step);
-
-    // let sample = sample(rounded);// + rounded * real_step);
+    let sample = sample_pixel(sample_coord);
     if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
-        return vec4<f32>(rounded, 0.0, 0.0);
+        return sample;
     } else {
-        return vec4<f32>(0.0);
+        return image_display.clear_colour;
     }
 }
 
 fn billinear_filtering(pos: vec2<f32>) -> vec4<f32> {
-    let tex_size = vec2<f32>(textureDimensions(t_diffuse));
     let tex_pos = screen_pos_to_tex_coord(pos);
 
-    let real_step = 1.0 / tex_size;
+    let real_step = 1.0 / tex_size();
 
     let top_left = floor(tex_pos / real_step) * real_step;
     let top_right = top_left + vec2<f32>(real_step.x, 0.0);
@@ -85,22 +78,20 @@ fn billinear_filtering(pos: vec2<f32>) -> vec4<f32> {
                      ((tex_pos.x - top_left.x) / (top_right.x - top_left.x)) * top_right_sample;
 
     let bottom_middle = ((bottom_right.x - tex_pos.x) / (bottom_right.x - bottom_left.x)) * bottom_left_sample +
-                     ((tex_pos.x - bottom_left.x) / (bottom_right.x - bottom_left.x)) * bottom_right_sample;
+                        ((tex_pos.x - bottom_left.x) / (bottom_right.x - bottom_left.x)) * bottom_right_sample;
 
     let middle_middle = ((bottom_left.y - tex_pos.y) / (bottom_left.y - top_left.y)) * top_middle +
-                     ((tex_pos.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
+                        ((tex_pos.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
 
     if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
         return middle_middle;
     } else {
-        return vec4<f32>(1.0);
+        return image_display.clear_colour;
     }
 }
 
 fn screen_pos_to_tex_coord(pos: vec2<f32>) -> vec2<f32> {
-    let tex_size = vec2<f32>(textureDimensions(t_diffuse));
-    // return floor((pos.xy - image_display.pos + (tex_size * image_display.scale / 2.0)) / image_display.scale) / tex_size;
-    return ((pos.xy - image_display.pos + (tex_size * image_display.scale / 2.0)) / image_display.scale) / tex_size;
+    return ((pos.xy - image_display.pos + (tex_size() * image_display.scale / 2.0)) / image_display.scale) / tex_size();
 }
 
 fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
@@ -114,9 +105,16 @@ fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
     );
 }
 
+fn sample_pixel(pos : vec2<i32>) -> vec4<f32> {
+    let transformed = (vec2<f32>(pos) + vec2<f32>(0.5)) / tex_size();
+    return textureSample(t_diffuse, s_diffuse, transformed);
+}
+
 fn sample(pos : vec2<f32>) -> vec4<f32> {
     return textureSample(t_diffuse, s_diffuse, pos);
 }
+
+// fn sample_pixel(pixel)
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -128,7 +126,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             return gamma_correction(billinear_filtering(in.clip_position.xy));
         }
         default: {
-            return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            return image_display.clear_colour;
         }
     }
 }

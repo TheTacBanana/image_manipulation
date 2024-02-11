@@ -212,6 +212,16 @@ impl GraphicsContext {
                         },
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 6,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
                 label: Some("image_display_bind_group_layout"),
             });
@@ -267,6 +277,14 @@ impl GraphicsContext {
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &image_display_buffer,
+                        offset: 0,
+                        size: None,
+                    }),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &image_display_buffer,
                         offset: 0,
@@ -513,6 +531,10 @@ impl GraphicsContext {
                     &mut self.image_display.cross_correlation,
                     "Cross Correlation",
                 ));
+                egui::color_picker::color_edit_button_rgb(
+                    ui,
+                    &mut self.image_display.background_colour,
+                );
 
                 self.input.mouse_over_ui = ui.ui_contains_pointer();
             });
@@ -569,7 +591,6 @@ impl GraphicsContext {
                 let delta = input.update_touch(id, pos).unwrap();
 
                 if !input.mouse_over_ui {
-
                     match input.touch_count() {
                         1 => {
                             self.image_display.pos[0] += delta.x;
@@ -586,16 +607,14 @@ impl GraphicsContext {
                             self.image_display.size -= ((m2 / m1) - 1.0);
                             self.image_display.size = f32::max(self.image_display.size, 0.001);
                         }
-                        _ => ()
+                        _ => (),
                     }
                 }
-            },
+            }
             CursorEvent::EndTouch(id) => {
                 input.end_touch(id);
             }
-            CursorEvent::ButtonPressed => {
-                input.mouse_pressed = true && !input.mouse_over_ui
-            }
+            CursorEvent::ButtonPressed => input.mouse_pressed = true && !input.mouse_over_ui,
             CursorEvent::ButtonReleased => {
                 input.mouse_pressed = false;
             }

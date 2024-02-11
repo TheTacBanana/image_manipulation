@@ -32,7 +32,7 @@ pub fn run() {
     let window = Window::new();
     let mut context = pollster::block_on(GraphicsContext::new(&window));
 
-    let texture = Texture::from_bytes(&context, include_bytes!("../raytrace.jpg"), "").unwrap();
+    let texture = Texture::from_bytes(&context, include_bytes!("../square.png"), "").unwrap();
 
     window.run(move |window, event, control_flow| {
         context.egui.platform.handle_event(&event);

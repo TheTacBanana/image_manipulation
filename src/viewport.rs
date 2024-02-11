@@ -40,6 +40,7 @@ pub struct ImageDisplay {
     pub gamma: f32,
     pub scaling_mode: ScalingMode,
     pub cross_correlation: bool,
+    pub background_colour: [f32; 3],
 }
 
 impl Default for ImageDisplay {
@@ -50,6 +51,7 @@ impl Default for ImageDisplay {
             gamma: 1.,
             scaling_mode: ScalingMode::NearestNeighbour,
             cross_correlation: false,
+            background_colour: [0., 0., 0.],
         }
     }
 }
@@ -62,7 +64,8 @@ pub struct RawImageDisplay {
     pub gamma: f32,
     pub scaling_mode: u32,
     pub cross_correlation: u32,
-    pub _pad: [f32; 2],
+    pub background_colour: [f32; 4],
+    pub _pad: [f32; 4],
 }
 
 impl ImageDisplay {
@@ -76,14 +79,22 @@ impl ImageDisplay {
                 true => 1,
                 false => 0,
             },
-            _pad: Default::default()
+            background_colour: [0.0; 4],
+                // self.background_colour[0],
+                // self.background_colour[1],
+                // self.background_colour[2],
+                // 1.,
+            // ],
+            _pad: Default::default(),
         }
     }
 
     pub fn bind(&mut self, context: &GraphicsContext) {
-        context
-            .queue
-            .write_buffer(&context.image_display_buffer, 0, bytemuck::bytes_of(&self.into_raw()));
+        context.queue.write_buffer(
+            &context.image_display_buffer,
+            0,
+            bytemuck::bytes_of(&self.into_raw()),
+        );
     }
 }
 
