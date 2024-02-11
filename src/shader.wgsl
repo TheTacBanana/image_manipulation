@@ -117,7 +117,8 @@ fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
 }
 
 fn sample_pixel(pos : vec2<i32>) -> vec4<f32> {
-    let transformed = (vec2<f32>(pos) + vec2<f32>(0.5)) / tex_size();
+    let clamped = min(max(pos, vec2<i32>(0)), vec2<i32>(tex_size()));
+    let transformed = (vec2<f32>(clamped) + vec2<f32>(0.5)) / tex_size();
     return textureSample(t_diffuse, s_diffuse, transformed);
 }
 
