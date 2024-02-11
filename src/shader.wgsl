@@ -40,11 +40,26 @@ fn vs_main(
 
 // Fragment shader
 
+fn div(x: f32, y: f32) -> f32{
+    return floor(x / y) * y;
+}
+
+fn div_vec(x: vec2<f32>, y: vec2<f32>) -> vec2<f32>{
+    return floor(x / y) * y;
+}
+
 fn nearest_neighbour(pos: vec2<f32>) -> vec4<f32> {
-    var tex_pos = screen_pos_to_tex_coord(pos);
-    let sample = textureSample(t_diffuse, s_diffuse, tex_pos);
+    let tex_size = vec2<f32>(textureDimensions(t_diffuse));
+    let tex_pos = screen_pos_to_tex_coord(pos);
+
+    let real_step = 1.0 / tex_size;
+
+    let top_left = floor(tex_pos / real_step) * real_step;
+    let rounded = round((tex_pos % real_step) / real_step);
+
+    // let sample = sample(rounded);// + rounded * real_step);
     if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
-        return sample;
+        return vec4<f32>(rounded, 0.0, 0.0);
     } else {
         return vec4<f32>(0.0);
     }
@@ -52,21 +67,40 @@ fn nearest_neighbour(pos: vec2<f32>) -> vec4<f32> {
 
 fn billinear_filtering(pos: vec2<f32>) -> vec4<f32> {
     let tex_size = vec2<f32>(textureDimensions(t_diffuse));
+    let tex_pos = screen_pos_to_tex_coord(pos);
 
-    let right = vec2<f32>(image_display.scale, 0.0);
-    let down = vec2<f32>(0.0, image_display.scale);
+    let real_step = 1.0 / tex_size;
 
-    let up = textureSample(t_diffuse, s_diffuse, screen_pos_to_tex_coord(pos - down));
-    let ri = textureSample(t_diffuse, s_diffuse, screen_pos_to_tex_coord(pos + right));
-    let le = textureSample(t_diffuse, s_diffuse, screen_pos_to_tex_coord(pos + down));
-    let dow = textureSample(t_diffuse, s_diffuse, screen_pos_to_tex_coord(pos - right));
+    let top_left = floor(tex_pos / real_step) * real_step;
+    let top_right = top_left + vec2<f32>(real_step.x, 0.0);
+    let bottom_left = top_left + vec2<f32>(0.0, real_step.y);
+    let bottom_right = top_left + real_step;
 
-    return (up + ri + le + dow) / 4.0;
+    let top_left_sample = sample(top_left);
+    let top_right_sample = sample(top_right);
+    let bottom_left_sample = sample(bottom_left);
+    let bottom_right_sample = sample(bottom_right);
+
+    let top_middle = ((top_right.x - tex_pos.x) / (top_right.x - top_left.x)) * top_left_sample +
+                     ((tex_pos.x - top_left.x) / (top_right.x - top_left.x)) * top_right_sample;
+
+    let bottom_middle = ((bottom_right.x - tex_pos.x) / (bottom_right.x - bottom_left.x)) * bottom_left_sample +
+                     ((tex_pos.x - bottom_left.x) / (bottom_right.x - bottom_left.x)) * bottom_right_sample;
+
+    let middle_middle = ((bottom_left.y - tex_pos.y) / (bottom_left.y - top_left.y)) * top_middle +
+                     ((tex_pos.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
+
+    if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
+        return middle_middle;
+    } else {
+        return vec4<f32>(1.0);
+    }
 }
 
 fn screen_pos_to_tex_coord(pos: vec2<f32>) -> vec2<f32> {
     let tex_size = vec2<f32>(textureDimensions(t_diffuse));
-    return floor((pos.xy - image_display.pos + (tex_size * image_display.scale / 2.0)) / image_display.scale) / tex_size;
+    // return floor((pos.xy - image_display.pos + (tex_size * image_display.scale / 2.0)) / image_display.scale) / tex_size;
+    return ((pos.xy - image_display.pos + (tex_size * image_display.scale / 2.0)) / image_display.scale) / tex_size;
 }
 
 fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
@@ -80,20 +114,21 @@ fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
     );
 }
 
-fn to_pixel()
+fn sample(pos : vec2<f32>) -> vec4<f32> {
+    return textureSample(t_diffuse, s_diffuse, pos);
+}
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return ((vec4<f32>(screen_pos_to_tex_coord(in.clip_position.xy), 0.0, 0.0) % 1.0) + vec4<f32>(1.0)) % 1.0;
-    // switch image_display.scaling_mode {
-    //     case 0u: {
-    //         return gamma_correction(nearest_neighbour(in.clip_position.xy));
-    //     }
-    //     case 1u: {
-    //         return gamma_correction(billinear_filtering(in.clip_position.xy));
-    //     }
-    //     default: {
-    //         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    //     }
-    // }
+    switch image_display.scaling_mode {
+        case 0u: {
+            return gamma_correction(nearest_neighbour(in.clip_position.xy));
+        }
+        case 1u: {
+            return gamma_correction(billinear_filtering(in.clip_position.xy));
+        }
+        default: {
+            return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        }
+    }
 }
