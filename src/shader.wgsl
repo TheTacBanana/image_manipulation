@@ -40,17 +40,37 @@ fn vs_main(
 
 // Fragment shader
 
-fn screen_center_pos() -> vec2<f32> {
-    return dims / 2.0;
+fn nearest_neighbour(pos: vec2<f32>) -> vec4<f32> {
+    var tex_pos = screen_pos_to_tex_coord(pos);
+    let sample = textureSample(t_diffuse, s_diffuse, tex_pos);
+    if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
+        return sample;
+    } else {
+        return vec4<f32>(0.0);
+    }
 }
 
-fn screen_pos_to_tex_coord(pos : vec2<f32>) -> vec2<f32> {
+fn billinear_filtering(pos: vec2<f32>) -> vec4<f32> {
+    let tex_size = vec2<f32>(textureDimensions(t_diffuse));
+
+    let right = vec2<f32>(image_display.scale, 0.0);
+    let down = vec2<f32>(0.0, image_display.scale);
+
+    let up = textureSample(t_diffuse, s_diffuse, screen_pos_to_tex_coord(pos - down));
+    let ri = textureSample(t_diffuse, s_diffuse, screen_pos_to_tex_coord(pos + right));
+    let le = textureSample(t_diffuse, s_diffuse, screen_pos_to_tex_coord(pos + down));
+    let dow = textureSample(t_diffuse, s_diffuse, screen_pos_to_tex_coord(pos - right));
+
+    return (up + ri + le + dow) / 4.0;
+}
+
+fn screen_pos_to_tex_coord(pos: vec2<f32>) -> vec2<f32> {
     let tex_size = vec2<f32>(textureDimensions(t_diffuse));
     return floor((pos.xy - image_display.pos + (tex_size * image_display.scale / 2.0)) / image_display.scale) / tex_size;
 }
 
-fn gamma_correction(colour : vec4<f32>) -> vec4<f32> {
-    var scaled = colour; // / 255.0;
+fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
+    var scaled = colour;
     var inverse_gamma = 1.0 / image_display.gamma;
     return vec4<f32>(
         pow(scaled.x, inverse_gamma),
@@ -60,14 +80,20 @@ fn gamma_correction(colour : vec4<f32>) -> vec4<f32> {
     );
 }
 
+fn to_pixel()
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var tex_pos = screen_pos_to_tex_coord(in.clip_position.xy);
-    let sample = textureSample(t_diffuse, s_diffuse, tex_pos);
-
-    if tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0 {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    } else {
-        return gamma_correction(sample);
-    };
+    return ((vec4<f32>(screen_pos_to_tex_coord(in.clip_position.xy), 0.0, 0.0) % 1.0) + vec4<f32>(1.0)) % 1.0;
+    // switch image_display.scaling_mode {
+    //     case 0u: {
+    //         return gamma_correction(nearest_neighbour(in.clip_position.xy));
+    //     }
+    //     case 1u: {
+    //         return gamma_correction(billinear_filtering(in.clip_position.xy));
+    //     }
+    //     default: {
+    //         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    //     }
+    // }
 }
