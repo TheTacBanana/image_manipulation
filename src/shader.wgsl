@@ -61,27 +61,38 @@ fn nearest_neighbour(pos: vec2<f32>) -> vec4<f32> {
 
 fn billinear_filtering(pos: vec2<f32>) -> vec4<f32> {
     let tex_pos = screen_pos_to_tex_coord(pos);
-
     let real_step = 1.0 / tex_size();
 
-    let top_left = floor(tex_pos / real_step) * real_step;
-    let top_right = top_left + vec2<f32>(real_step.x, 0.0);
-    let bottom_left = top_left + vec2<f32>(0.0, real_step.y);
-    let bottom_right = top_left + real_step;
+    let pixel_pos = tex_pos / real_step;
 
-    let top_left_sample = sample(top_left);
-    let top_right_sample = sample(top_right);
-    let bottom_left_sample = sample(bottom_left);
-    let bottom_right_sample = sample(bottom_right);
+    let top_left = floor(tex_pos / real_step);
+    let top_right = top_left + vec2<f32>(1.0, 0.0);
+    let bottom_left = top_left + vec2<f32>(0.0, 1.0);
+    let bottom_right = top_left + vec2<f32>(1.0);
 
-    let top_middle = ((top_right.x - tex_pos.x) / (top_right.x - top_left.x)) * top_left_sample +
-                     ((tex_pos.x - top_left.x) / (top_right.x - top_left.x)) * top_right_sample;
+    let top_left_sample = sample_pixel(vec2<i32>(top_left));
+    let top_right_sample = sample_pixel(vec2<i32>(top_right));
+    let bottom_left_sample = sample_pixel(vec2<i32>(bottom_left));
+    let bottom_right_sample = sample_pixel(vec2<i32>(bottom_right));
 
-    let bottom_middle = ((bottom_right.x - tex_pos.x) / (bottom_right.x - bottom_left.x)) * bottom_left_sample +
-                        ((tex_pos.x - bottom_left.x) / (bottom_right.x - bottom_left.x)) * bottom_right_sample;
+    // let top_left = floor(tex_pos / real_step) * real_step;
+    // let top_right = top_left + vec2<f32>(real_step.x, 0.0);
+    // let bottom_left = top_left + vec2<f32>(0.0, real_step.y);
+    // let bottom_right = top_left + real_step;
 
-    let middle_middle = ((bottom_left.y - tex_pos.y) / (bottom_left.y - top_left.y)) * top_middle +
-                        ((tex_pos.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
+    // let top_left_sample = sample(top_left);
+    // let top_right_sample = sample(top_right);
+    // let bottom_left_sample = sample(bottom_left);
+    // let bottom_right_sample = sample(bottom_right);
+
+    let top_middle = ((top_right.x - pixel_pos.x) / (top_right.x - top_left.x)) * top_left_sample +
+                     ((pixel_pos.x - top_left.x) / (top_right.x - top_left.x)) * top_right_sample;
+
+    let bottom_middle = ((bottom_right.x - pixel_pos.x) / (bottom_right.x - bottom_left.x)) * bottom_left_sample +
+                        ((pixel_pos.x - bottom_left.x) / (bottom_right.x - bottom_left.x)) * bottom_right_sample;
+
+    let middle_middle = ((bottom_left.y - pixel_pos.y) / (bottom_left.y - top_left.y)) * top_middle +
+                        ((pixel_pos.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
 
     if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
         return middle_middle;
