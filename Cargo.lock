@@ -485,6 +485,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "egui",
+ "egui_file",
  "egui_wgpu_backend",
  "egui_winit_platform",
  "env_logger",
@@ -550,6 +551,15 @@ dependencies = [
  "ahash",
  "epaint",
  "nohash-hasher",
+]
+
+[[package]]
+name = "egui_file"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3798619cf962cee17970775470e1e572870275062932d1cdb9117c8d66bd61c7"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

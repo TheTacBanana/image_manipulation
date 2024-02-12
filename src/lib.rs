@@ -1,6 +1,13 @@
+use std::{
+    future::{Future, IntoFuture},
+    pin::Pin,
+    task::Poll,
+};
+
 use context::GraphicsContext;
 
 use input::CursorEvent;
+use pollster::FutureExt;
 use texture::Texture;
 use window::Window;
 use winit::{
@@ -11,11 +18,13 @@ use winit::{
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::texture::load_bytes;
+
 pub mod context;
+pub mod image_display;
 pub mod input;
 pub mod texture;
 pub mod vertex;
-pub mod image_display;
 pub mod window;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
@@ -32,9 +41,20 @@ pub fn run() {
     let window = Window::new();
     let mut context = pollster::block_on(GraphicsContext::new(&window));
 
-    let texture = Texture::from_bytes(&context, include_bytes!("../lena.png"), "").unwrap();
+    let mut texture = Texture::from_bytes(&context, include_bytes!("../raytrace.jpg"), "").unwrap();
 
     window.run(move |window, event, control_flow| {
+        if let Some(path) = context.egui.opened_file.take() {
+            texture = Texture::from_bytes(
+                &context,
+                &load_bytes(path.clone().to_str().unwrap())
+                    .block_on()
+                    .unwrap(),
+                "",
+            )
+            .unwrap();
+        }
+
         context.egui.platform.handle_event(&event);
         match event {
             Event::RedrawRequested(_) => {

@@ -109,8 +109,4 @@ impl Texture {
 
         Ok(Self { texture, view, sampler, bind_group })
     }
-
-    pub fn bind(&self, context: &GraphicsContext) {
-
-    }
 }

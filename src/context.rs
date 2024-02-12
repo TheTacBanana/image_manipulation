@@ -1,17 +1,22 @@
-use std::iter;
+use std::{
+    ffi::OsStr,
+    iter,
+    path::{Path, PathBuf},
+};
 
 use cgmath::InnerSpace;
 use egui::{Checkbox, ComboBox, Slider};
+use egui_file::FileDialog;
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use instant::Instant;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
+    image_display::{ImageDisplay, ScalingMode},
     input::{CursorEvent, InputContext},
     texture::Texture,
     vertex::Vertex,
-    image_display::{ImageDisplay, ScalingMode},
 };
 
 use super::window::Window;
@@ -43,6 +48,8 @@ pub struct GraphicsContext {
 pub struct EguiContext {
     pub platform: Platform,
     pub render_pass: RenderPass,
+    pub opened_file: Option<PathBuf>,
+    pub open_file_dialog: Option<FileDialog>,
 }
 
 impl GraphicsContext {
@@ -214,6 +221,8 @@ impl GraphicsContext {
             egui: EguiContext {
                 platform,
                 render_pass,
+                opened_file: None,
+                open_file_dialog: None,
             },
             input: InputContext::default(),
         }
@@ -311,6 +320,25 @@ impl GraphicsContext {
         egui::Window::new("Image Settings")
             .collapsible(false)
             .show(ctx, |ui| {
+                if (ui.button("Open file")).clicked() {
+                    let mut dialog = FileDialog::open_file(self.egui.opened_file.clone()).filter(
+                        Box::new(move |path: &Path| -> bool {
+                            path.extension() == Some(OsStr::new("png"))
+                                || path.extension() == Some(OsStr::new("jpg"))
+                        }),
+                    );
+                    dialog.open();
+                    self.egui.open_file_dialog = Some(dialog);
+                }
+
+                if let Some(dialog) = &mut self.egui.open_file_dialog {
+                    if dialog.show(ctx).selected() {
+                        if let Some(file) = dialog.path() {
+                            self.egui.opened_file = Some(file.to_path_buf());
+                        }
+                        self.egui.open_file_dialog.take();
+                    }
+                }
                 ui.add(egui::TextEdit::singleline(&mut x_pos));
                 ui.add(egui::TextEdit::singleline(&mut y_pos));
                 ui.add(
@@ -336,9 +364,9 @@ impl GraphicsContext {
                     "Cross Correlation",
                 ));
                 // egui::color_picker::color_edit_button_rgba(
-                    // ui,
-                    // &mut egui::Rgba(self.image_display.background_colour),
-                    // egui::color_picker::Alpha::Opaque
+                // ui,
+                // &mut egui::Rgba(self.image_display.background_colour),
+                // egui::color_picker::Alpha::Opaque
                 // );
 
                 self.input.mouse_over_ui = ui.ui_contains_pointer();
