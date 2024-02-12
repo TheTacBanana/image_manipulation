@@ -1,10 +1,10 @@
 use context::GraphicsContext;
-use egui::epaint::text::PASSWORD_REPLACEMENT_CHAR;
+
 use input::CursorEvent;
-use texture::{load_bytes, Texture};
-use window::{Window, WindowEvents};
+use texture::Texture;
+use window::Window;
 use winit::{
-    event::{DeviceEvent, Event, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent},
+    event::{Event, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent},
     event_loop::ControlFlow,
 };
 
@@ -32,7 +32,7 @@ pub fn run() {
     let window = Window::new();
     let mut context = pollster::block_on(GraphicsContext::new(&window));
 
-    let texture = Texture::from_bytes(&context, include_bytes!("../square.png"), "").unwrap();
+    let texture = Texture::from_bytes(&context, include_bytes!("../lena.png"), "").unwrap();
 
     window.run(move |window, event, control_flow| {
         context.egui.platform.handle_event(&event);

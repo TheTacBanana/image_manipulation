@@ -1,40 +1,43 @@
+use std::default;
+
 use egui::Image;
 
 use crate::context::GraphicsContext;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ViewportDimensions {
-    pub dimensions: [f32; 2],
-}
+// #[repr(C)]
+// #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+// pub struct ViewportDimensions {
+//     pub dimensions: [f32; 2],
+// }
 
-impl ViewportDimensions {
-    pub fn from_window(window: &winit::window::Window) -> Self {
-        ViewportDimensions {
-            dimensions: [
-                window.inner_size().width as f32,
-                window.inner_size().height as f32,
-            ],
-        }
-    }
+// impl ViewportDimensions {
+//     pub fn from_window(window: &winit::window::Window) -> Self {
+//         ViewportDimensions {
+//             dimensions: [
+//                 window.inner_size().width as f32,
+//                 window.inner_size().height as f32,
+//             ],
+//         }
+//     }
 
-    pub fn from_dim(x: u32, y: u32) -> Self {
-        ViewportDimensions {
-            dimensions: [x as f32, y as f32],
-        }
-    }
+//     pub fn from_dim(x: u32, y: u32) -> Self {
+//         ViewportDimensions {
+//             dimensions: [x as f32, y as f32],
+//         }
+//     }
 
-    pub fn bind(&self, context: &GraphicsContext) {
-        context.queue.write_buffer(
-            &context.dim_buffer,
-            0,
-            bytemuck::cast_slice(&[self.dimensions]),
-        )
-    }
-}
+//     pub fn bind(&self, context: &GraphicsContext) {
+//         context.queue.write_buffer(
+//             &context.dim_buffer,
+//             0,
+//             bytemuck::cast_slice(&[self.dimensions]),
+//         )
+//     }
+// }
 
 #[derive(Copy, Clone, Debug)]
 pub struct ImageDisplay {
+    pub window_size: [f32; 2],
     pub pos: [f32; 2],
     pub size: f32,
     pub gamma: f32,
@@ -46,6 +49,7 @@ pub struct ImageDisplay {
 impl Default for ImageDisplay {
     fn default() -> Self {
         ImageDisplay {
+            window_size: [1000., 1000.],
             pos: [0., 0.],
             size: 1.,
             gamma: 1.,
@@ -59,6 +63,7 @@ impl Default for ImageDisplay {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RawImageDisplay {
+    pub window_size: [f32; 2],
     pub pos: [f32; 2],
     pub size: f32,
     pub gamma: f32,
@@ -69,8 +74,19 @@ pub struct RawImageDisplay {
 }
 
 impl ImageDisplay {
+    pub fn from_window(window : &winit::window::Window) -> Self {
+        ImageDisplay {
+            window_size: [
+                window.inner_size().width as f32,
+                window.inner_size().height as f32,
+            ],
+            ..Default::default()
+        }
+    }
+
     pub fn into_raw(&self) -> RawImageDisplay {
         RawImageDisplay {
+            window_size: self.window_size,
             pos: self.pos,
             size: self.size,
             gamma: self.gamma,
@@ -80,11 +96,6 @@ impl ImageDisplay {
                 false => 0,
             },
             background_colour: [0.0; 4],
-                // self.background_colour[0],
-                // self.background_colour[1],
-                // self.background_colour[2],
-                // 1.,
-            // ],
             _pad: Default::default(),
         }
     }

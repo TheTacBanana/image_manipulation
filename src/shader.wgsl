@@ -1,12 +1,10 @@
 @group(0) @binding(0)
-var<uniform> dims: vec2<f32>;
-
-@group(1) @binding(0)
 var t_diffuse: texture_2d<f32>;
-@group(1) @binding(1)
+@group(0) @binding(1)
 var s_diffuse: sampler;
 
 struct ImageDisplay {
+    window_size: vec2<f32>,
     pos: vec2<f32>,
     scale: f32,
     gamma: f32,
@@ -15,7 +13,7 @@ struct ImageDisplay {
     clear_colour: vec4<f32>
 };
 
-@group(2) @binding(0)
+@group(1) @binding(0)
 var<uniform> image_display : ImageDisplay;
 
 // Vertex shader

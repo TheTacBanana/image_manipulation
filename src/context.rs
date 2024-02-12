@@ -1,7 +1,7 @@
 use std::iter;
 
-use cgmath::{InnerSpace, MetricSpace, Vector2, Zero};
-use egui::{Checkbox, ComboBox, Slider, TextBuffer};
+use cgmath::InnerSpace;
+use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use instant::Instant;
@@ -11,7 +11,7 @@ use crate::{
     input::{CursorEvent, InputContext},
     texture::Texture,
     vertex::Vertex,
-    viewport::{ImageDisplay, ScalingMode, ViewportDimensions},
+    viewport::{ImageDisplay, ScalingMode},
 };
 
 use super::window::Window;
@@ -33,8 +33,6 @@ pub struct GraphicsContext {
     pub pipeline: wgpu::RenderPipeline,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
-    pub dim_buffer: wgpu::Buffer,
-    pub dim_bind_group: wgpu::BindGroup,
     pub texture_layout: wgpu::BindGroupLayout,
     pub image_display: ImageDisplay,
     pub image_display_buffer: wgpu::Buffer,
@@ -116,11 +114,11 @@ impl GraphicsContext {
 
         let render_pass = RenderPass::new(&device, surface_format, 1);
 
-        let dims = ViewportDimensions::from_window(&window.raw);
+        let image_display = ImageDisplay::from_window(&window.raw);
 
-        let dim_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
+        let entries = (0..=7)
+            .map(|i| wgpu::BindGroupLayoutEntry {
+                binding: i,
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
@@ -128,101 +126,12 @@ impl GraphicsContext {
                     min_binding_size: None,
                 },
                 count: None,
-            }],
-            label: Some("dim_bind_group_layout"),
-        });
-
-        let dim_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("dim_buf"),
-            contents: bytemuck::cast_slice(&[dims]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let dim_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &dim_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: dim_buffer.as_entire_binding(),
-            }],
-            label: Some("dim_bind_group"),
-        });
-
-        let image_display = ImageDisplay::default();
+            })
+            .collect::<Vec<wgpu::BindGroupLayoutEntry>>();
 
         let image_display_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 4,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 5,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 6,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
+                entries: &entries,
                 label: Some("image_display_bind_group_layout"),
             });
 
@@ -232,66 +141,20 @@ impl GraphicsContext {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let entries = (0..=7)
+            .map(|i| wgpu::BindGroupEntry {
+                binding: i,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &image_display_buffer,
+                    offset: 0,
+                    size: None,
+                }),
+            })
+            .collect::<Vec<wgpu::BindGroupEntry>>();
+
         let image_display_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &image_display_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &image_display_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &image_display_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &image_display_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &image_display_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &image_display_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &image_display_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &image_display_buffer,
-                        offset: 0,
-                        size: None,
-                    }),
-                },
-            ],
+            entries: &entries,
             label: Some("image_display_bind_group"),
         });
 
@@ -325,7 +188,7 @@ impl GraphicsContext {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&dim_layout, &texture_layout, &image_display_layout],
+                bind_group_layouts: &[&texture_layout, &image_display_layout],
                 push_constant_ranges: &[],
             });
 
@@ -354,12 +217,8 @@ impl GraphicsContext {
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
-                // or Features::POLYGON_MODE_POINT
                 polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
             depth_stencil: None,
@@ -368,8 +227,6 @@ impl GraphicsContext {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            // If the pipeline will be used with a multiview render pass, this
-            // indicates how many array layers the attachments will have.
             multiview: None,
         });
 
@@ -395,8 +252,6 @@ impl GraphicsContext {
             pipeline,
             vertex_buffer,
             index_buffer,
-            dim_buffer,
-            dim_bind_group,
             texture_layout,
             image_display,
             image_display_buffer,
@@ -415,7 +270,7 @@ impl GraphicsContext {
             self.config.width = width;
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
-            ViewportDimensions::from_dim(width, height).bind(&self)
+            self.image_display.window_size = [width as f32, height as f32];
         }
     }
 
@@ -479,9 +334,8 @@ impl GraphicsContext {
         });
 
         render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_bind_group(0, &self.dim_bind_group, &[]);
-        render_pass.set_bind_group(1, &texture.bind_group, &[]);
-        render_pass.set_bind_group(2, &self.image_display_bind_group, &[]);
+        render_pass.set_bind_group(0, &texture.bind_group, &[]);
+        render_pass.set_bind_group(1, &self.image_display_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
@@ -546,11 +400,9 @@ impl GraphicsContext {
             self.image_display.pos[1] = y_pos;
         }
 
-        // End the UI frame. We could now handle the output and draw the UI with the backend.
         let full_output = self.egui.platform.end_frame(Some(&window));
         let paint_jobs = self.egui.platform.context().tessellate(full_output.shapes);
 
-        // Upload all resources for the GPU.
         let screen_descriptor = ScreenDescriptor {
             physical_width: self.config.width,
             physical_height: self.config.height,
@@ -568,13 +420,11 @@ impl GraphicsContext {
             &screen_descriptor,
         );
 
-        // Record all render passes.
         self.egui
             .render_pass
             .execute(encoder, &view, &paint_jobs, &screen_descriptor, None)
             .unwrap();
 
-        // Submit the commands.
         self.egui
             .render_pass
             .remove_textures(tdelta)
@@ -604,7 +454,7 @@ impl GraphicsContext {
                             let m1 = between.magnitude();
                             let m2 = (between + delta).magnitude();
 
-                            self.image_display.size -= ((m2 / m1) - 1.0);
+                            self.image_display.size -= (m2 / m1) - 1.0;
                             self.image_display.size = f32::max(self.image_display.size, 0.001);
                         }
                         _ => (),
