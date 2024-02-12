@@ -31,17 +31,8 @@ impl Texture {
     pub fn from_bytes(
         context: &GraphicsContext,
         bytes: &[u8],
-        label: &str
     ) -> Result<Self> {
         let img = image::load_from_memory(bytes)?;
-        Self::from_image(context, &img, Some(label))
-    }
-
-    pub fn from_image(
-        context: &GraphicsContext,
-        img: &image::DynamicImage,
-        label: Option<&str>
-    ) -> Result<Self> {
         let rgba = img.to_rgba8();
         let dimensions = img.dimensions();
 
@@ -52,7 +43,7 @@ impl Texture {
         };
         let texture = context.device.create_texture(
             &wgpu::TextureDescriptor {
-                label,
+                label: None,
                 size,
                 mip_level_count: 1,
                 sample_count: 1,

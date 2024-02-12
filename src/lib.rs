@@ -21,10 +21,18 @@ pub mod texture;
 pub mod vertex;
 pub mod window;
 
+// #[cfg(target_arch = "wasm32")]
+// #[link(wasm_import_module = "./mod.js")]
+// // #[wasm_bindgen]
+// extern {
+//     static foo : u32;
+// }
+
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn run() {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
+            // unsafe { println!("{:?}", foo) };
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
             console_log::init_with_level(log::Level::Warn).expect("Couldn't initialize logger");
         } else {
@@ -35,7 +43,7 @@ pub fn run() {
     let window = Window::new();
     let mut context = pollster::block_on(GraphicsContext::new(&window));
 
-    let mut texture = Texture::from_bytes(&context, include_bytes!("../assets/raytrace.jpg"), "").unwrap();
+    let mut texture = Texture::from_bytes(&context, include_bytes!("../assets/raytrace.jpg")).unwrap();
 
     window.run(move |window, event, control_flow| {
         if let Some(path) = context.egui.opened_file.take() {
@@ -44,7 +52,6 @@ pub fn run() {
                 &load_bytes(path.clone().to_str().unwrap())
                     .block_on()
                     .unwrap(),
-                "",
             )
             .unwrap();
         }
@@ -67,7 +74,6 @@ pub fn run() {
                 texture = Texture::from_bytes(
                     &context,
                     &load_bytes(path.to_str().unwrap()).block_on().unwrap(),
-                    "",
                 )
                 .unwrap();
             }

@@ -1,4 +1,5 @@
 use winit::{
+    dpi::PhysicalSize,
     event::{
         ElementState, Event, MouseButton, VirtualKeyCode,
     },
