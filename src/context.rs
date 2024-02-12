@@ -94,9 +94,7 @@ impl GraphicsContext {
         let surface_format = surface_caps
             .formats
             .iter()
-            .copied()
-            .filter(|f| f.is_srgb())
-            .next()
+            .copied().find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
@@ -111,8 +109,8 @@ impl GraphicsContext {
         surface.configure(&device, &config);
 
         let platform = Platform::new(PlatformDescriptor {
-            physical_width: size.width as u32,
-            physical_height: size.height as u32,
+            physical_width: size.width,
+            physical_height: size.height,
             scale_factor: window.raw.scale_factor(),
             ..Default::default()
         });
@@ -242,7 +240,7 @@ impl GraphicsContext {
         texture: &Texture,
         window: &winit::window::Window,
     ) -> Result<(), wgpu::SurfaceError> {
-        self.image_display.bind(&self);
+        self.image_display.bind(self);
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -275,7 +273,7 @@ impl GraphicsContext {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -381,7 +379,7 @@ impl GraphicsContext {
             self.image_display.pos[1] = y_pos;
         }
 
-        let full_output = self.egui.platform.end_frame(Some(&window));
+        let full_output = self.egui.platform.end_frame(Some(window));
         let paint_jobs = self.egui.platform.context().tessellate(full_output.shapes);
 
         let screen_descriptor = ScreenDescriptor {
@@ -403,7 +401,7 @@ impl GraphicsContext {
 
         self.egui
             .render_pass
-            .execute(encoder, &view, &paint_jobs, &screen_descriptor, None)
+            .execute(encoder, view, &paint_jobs, &screen_descriptor, None)
             .unwrap();
 
         self.egui

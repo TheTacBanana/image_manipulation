@@ -1,9 +1,8 @@
 use winit::{
     event::{
-        DeviceEvent, ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent,
+        ElementState, Event, MouseButton, VirtualKeyCode,
     },
-    event_loop::{ControlFlow, EventLoop},
-    dpi::PhysicalSize
+    event_loop::{ControlFlow, EventLoop}
 };
 
 #[derive(Debug)]
@@ -34,6 +33,12 @@ pub struct Window {
     pub raw: winit::window::Window,
 }
 
+impl Default for Window {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Window {
     pub fn new() -> Self {
         let event_loop = EventLoop::new();
@@ -60,10 +65,10 @@ impl Window {
 
     pub fn run(
         self,
-        mut callback: impl 'static + FnMut(&winit::window::Window, Event<'_, ()>, &mut ControlFlow) -> (),
+        mut callback: impl 'static + FnMut(&winit::window::Window, Event<'_, ()>, &mut ControlFlow),
     ) {
-        self.event_loop.run(move |event, _, mut control_flow| {
-            callback(&self.raw, event, &mut control_flow);
+        self.event_loop.run(move |event, _, control_flow| {
+            callback(&self.raw, event, control_flow);
         });
     }
 }

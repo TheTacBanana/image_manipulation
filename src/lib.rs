@@ -52,7 +52,7 @@ pub fn run() {
         context.egui.platform.handle_event(&event);
         match event {
             Event::RedrawRequested(_) => {
-                context.render(&texture, &window).unwrap();
+                context.render(&texture, window).unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
