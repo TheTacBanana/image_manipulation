@@ -11,7 +11,7 @@ use crate::{
     input::{CursorEvent, InputContext},
     texture::Texture,
     vertex::Vertex,
-    viewport::{ImageDisplay, ScalingMode},
+    image_display::{ImageDisplay, ScalingMode},
 };
 
 use super::window::Window;
@@ -35,8 +35,6 @@ pub struct GraphicsContext {
     pub index_buffer: wgpu::Buffer,
     pub texture_layout: wgpu::BindGroupLayout,
     pub image_display: ImageDisplay,
-    pub image_display_buffer: wgpu::Buffer,
-    pub image_display_bind_group: wgpu::BindGroup,
     pub last_frame: Instant,
     pub egui: EguiContext,
     pub input: InputContext,
@@ -114,49 +112,7 @@ impl GraphicsContext {
 
         let render_pass = RenderPass::new(&device, surface_format, 1);
 
-        let image_display = ImageDisplay::from_window(&window.raw);
-
-        let entries = (0..=7)
-            .map(|i| wgpu::BindGroupLayoutEntry {
-                binding: i,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            })
-            .collect::<Vec<wgpu::BindGroupLayoutEntry>>();
-
-        let image_display_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &entries,
-                label: Some("image_display_bind_group_layout"),
-            });
-
-        let image_display_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("image_display_buf"),
-            contents: bytemuck::bytes_of(&image_display.into_raw()),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let entries = (0..=7)
-            .map(|i| wgpu::BindGroupEntry {
-                binding: i,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &image_display_buffer,
-                    offset: 0,
-                    size: None,
-                }),
-            })
-            .collect::<Vec<wgpu::BindGroupEntry>>();
-
-        let image_display_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &image_display_layout,
-            entries: &entries,
-            label: Some("image_display_bind_group"),
-        });
+        let image_display = ImageDisplay::from_window(&device, &window.raw);
 
         let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -188,7 +144,7 @@ impl GraphicsContext {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_layout, &image_display_layout],
+                bind_group_layouts: &[&texture_layout, &image_display.layout],
                 push_constant_ranges: &[],
             });
 
@@ -254,8 +210,6 @@ impl GraphicsContext {
             index_buffer,
             texture_layout,
             image_display,
-            image_display_buffer,
-            image_display_bind_group,
             last_frame,
             egui: EguiContext {
                 platform,
@@ -279,11 +233,7 @@ impl GraphicsContext {
         texture: &Texture,
         window: &winit::window::Window,
     ) -> Result<(), wgpu::SurfaceError> {
-        {
-            let mut take = std::mem::take(&mut self.image_display);
-            take.bind(&self);
-            self.image_display = take;
-        }
+        self.image_display.bind(&self);
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -335,7 +285,7 @@ impl GraphicsContext {
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &texture.bind_group, &[]);
-        render_pass.set_bind_group(1, &self.image_display_bind_group, &[]);
+        render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
@@ -385,10 +335,11 @@ impl GraphicsContext {
                     &mut self.image_display.cross_correlation,
                     "Cross Correlation",
                 ));
-                egui::color_picker::color_edit_button_rgb(
-                    ui,
-                    &mut self.image_display.background_colour,
-                );
+                // egui::color_picker::color_edit_button_rgba(
+                    // ui,
+                    // &mut egui::Rgba(self.image_display.background_colour),
+                    // egui::color_picker::Alpha::Opaque
+                // );
 
                 self.input.mouse_over_ui = ui.ui_contains_pointer();
             });

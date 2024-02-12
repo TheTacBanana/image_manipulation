@@ -15,7 +15,7 @@ pub mod context;
 pub mod input;
 pub mod texture;
 pub mod vertex;
-pub mod viewport;
+pub mod image_display;
 pub mod window;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
