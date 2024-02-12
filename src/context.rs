@@ -363,10 +363,12 @@ impl GraphicsContext {
                     &mut self.image_display.cross_correlation,
                     "Cross Correlation",
                 ));
-                // egui::color_picker::color_edit_button_rgba(
-                // ui,
-                // &mut egui::Rgba(self.image_display.background_colour),
-                // egui::color_picker::Alpha::Opaque
+                if ui.button("Reset Default").clicked() {
+                    self.image_display.reset_default();
+                }
+                // egui::color_picker::color_edit_button_rgb(
+                //     ui,
+                //     &mut self.image_display.background_colour
                 // );
 
                 self.input.mouse_over_ui = ui.ui_contains_pointer();

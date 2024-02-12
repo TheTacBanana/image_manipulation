@@ -37,11 +37,10 @@ impl ImageDisplay {
             })
             .collect::<Vec<wgpu::BindGroupLayoutEntry>>();
 
-        let layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &entries,
-                label: Some("image_display_bind_group_layout"),
-            });
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &entries,
+            label: Some("image_display_bind_group_layout"),
+        });
 
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("image_display_buf"),
@@ -66,19 +65,28 @@ impl ImageDisplay {
             label: Some("image_display_bind_group"),
         });
 
-        let RawImageDisplay { window_size, pos, size, gamma, scaling_mode, cross_correlation, background_colour, _pad } = raw_image_display;
+        let RawImageDisplay {
+            window_size,
+            pos,
+            size,
+            gamma,
+            scaling_mode,
+            cross_correlation,
+            background_colour,
+            _pad,
+        } = raw_image_display;
 
         ImageDisplay {
             window_size,
             pos,
             size,
             gamma,
-            scaling_mode : ScalingMode::from_u32(scaling_mode),
+            scaling_mode: ScalingMode::from_u32(scaling_mode),
             cross_correlation: cross_correlation == 1,
             background_colour,
             layout,
             buffer,
-            bind_group
+            bind_group,
         }
     }
 
@@ -98,12 +106,31 @@ impl ImageDisplay {
         }
     }
 
+    pub fn reset_default(&mut self) {
+        let RawImageDisplay {
+            window_size,
+            pos,
+            size,
+            gamma,
+            scaling_mode,
+            cross_correlation,
+            background_colour,
+            _pad,
+        } = RawImageDisplay::default();
+
+        self.window_size = window_size;
+        self.pos = pos;
+        self.size = size;
+        self.gamma = gamma;
+        self.scaling_mode = ScalingMode::from_u32(scaling_mode);
+        self.cross_correlation = cross_correlation == 1;
+        self.background_colour = background_colour;
+    }
+
     pub fn bind(&self, context: &GraphicsContext) {
-        context.queue.write_buffer(
-            &self.buffer,
-            0,
-            bytemuck::bytes_of(&self.into_raw()),
-        );
+        context
+            .queue
+            .write_buffer(&self.buffer, 0, bytemuck::bytes_of(&self.into_raw()));
     }
 }
 
@@ -142,11 +169,11 @@ pub enum ScalingMode {
 }
 
 impl ScalingMode {
-    pub fn from_u32(i : u32) -> ScalingMode {
+    pub fn from_u32(i: u32) -> ScalingMode {
         match i {
             0 => Self::NearestNeighbour,
             1 => Self::Bilinear,
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }

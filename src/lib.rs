@@ -35,7 +35,7 @@ pub fn run() {
     let window = Window::new();
     let mut context = pollster::block_on(GraphicsContext::new(&window));
 
-    let mut texture = Texture::from_bytes(&context, include_bytes!("../raytrace.jpg"), "").unwrap();
+    let mut texture = Texture::from_bytes(&context, include_bytes!("../assets/raytrace.jpg"), "").unwrap();
 
     window.run(move |window, event, control_flow| {
         if let Some(path) = context.egui.opened_file.take() {
