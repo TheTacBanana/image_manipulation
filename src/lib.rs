@@ -1,9 +1,3 @@
-use std::{
-    future::{Future, IntoFuture},
-    pin::Pin,
-    task::Poll,
-};
-
 use context::GraphicsContext;
 
 use input::CursorEvent;
@@ -65,6 +59,17 @@ pub fn run() {
                 ..
             } => {
                 context.resize(size.width, size.height);
+            }
+            Event::WindowEvent {
+                event: WindowEvent::DroppedFile(path),
+                ..
+            } => {
+                texture = Texture::from_bytes(
+                    &context,
+                    &load_bytes(path.to_str().unwrap()).block_on().unwrap(),
+                    "",
+                )
+                .unwrap();
             }
             Event::WindowEvent {
                 event:
