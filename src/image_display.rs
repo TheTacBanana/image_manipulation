@@ -1,3 +1,5 @@
+use std::default;
+
 use wgpu::util::DeviceExt;
 
 use crate::context::GraphicsContext;
@@ -101,8 +103,8 @@ impl ImageDisplay {
                 true => 1,
                 false => 0,
             },
-            background_colour: [0.0; 4],
-            _pad: Default::default(),
+            background_colour: self.background_colour,
+            ..Default::default()
         }
     }
 
@@ -156,7 +158,7 @@ impl Default for RawImageDisplay {
             gamma: 1.,
             scaling_mode: 0,
             cross_correlation: 0,
-            background_colour: [0., 1., 0., 1.],
+            background_colour: [0., 0., 0., 1.],
             _pad: Default::default(),
         }
     }

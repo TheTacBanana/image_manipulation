@@ -16,7 +16,11 @@ use rfd::FileHandle;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
-    image_display::{ImageDisplay, ScalingMode}, input::{CursorEvent, InputContext}, texture::Texture, thread_context::ThreadContext, vertex::Vertex
+    image_display::{ImageDisplay, ScalingMode},
+    input::{CursorEvent, InputContext},
+    texture::Texture,
+    thread_context::ThreadContext,
+    vertex::Vertex,
 };
 
 use super::window::Window;
@@ -213,7 +217,7 @@ impl GraphicsContext {
             index_buffer,
             texture_layout,
             image_display,
-            last_frame : Instant::now(),
+            last_frame: Instant::now(),
             egui: EguiContext {
                 platform,
                 render_pass,
@@ -309,9 +313,6 @@ impl GraphicsContext {
 
         let ctx = &self.egui.platform.context();
 
-        let mut x_pos = self.image_display.pos[0].to_string();
-        let mut y_pos = self.image_display.pos[1].to_string();
-
         egui::Window::new("Image Settings")
             .collapsible(false)
             .show(ctx, |ui| {
@@ -331,12 +332,28 @@ impl GraphicsContext {
                         }
                     });
                 }
-                ui.add(egui::TextEdit::singleline(&mut x_pos));
-                ui.add(egui::TextEdit::singleline(&mut y_pos));
+
+                {
+                    let mut x_pos = self.image_display.pos[0].to_string();
+                    let mut y_pos = self.image_display.pos[1].to_string();
+
+                    ui.add(egui::TextEdit::singleline(&mut x_pos));
+                    ui.add(egui::TextEdit::singleline(&mut y_pos));
+
+                    if let Ok(x_pos) = x_pos.parse::<f32>() {
+                        self.image_display.pos[0] = x_pos;
+                    }
+                    if let Ok(y_pos) = y_pos.parse::<f32>() {
+                        self.image_display.pos[1] = y_pos;
+                    }
+                }
+
                 ui.add(
                     Slider::new(&mut self.image_display.gamma, 0.0..=5.0).text("Gamma Correction"),
                 );
+
                 ui.add(Slider::new(&mut self.image_display.size, 0.0..=10.0).text("Image Size"));
+
                 ComboBox::from_label("")
                     .selected_text(format!("{:?}", &mut self.image_display.scaling_mode))
                     .show_ui(ui, |ui| {
@@ -351,27 +368,27 @@ impl GraphicsContext {
                             "Bi-Linear",
                         );
                     });
+
                 ui.add(Checkbox::new(
                     &mut self.image_display.cross_correlation,
                     "Cross Correlation",
                 ));
+
                 if ui.button("Reset Default").clicked() {
                     self.image_display.reset_default();
                 }
-                // egui::color_picker::color_edit_button_rgb(
-                //     ui,
-                //     &mut self.image_display.background_colour
-                // );
+
+                {
+                    let colour = &mut self.image_display.background_colour;
+                    let mut rgb = [colour[0], colour[1], colour[2]];
+                    egui::color_picker::color_edit_button_rgb(ui, &mut rgb);
+                    colour[0] = rgb[0];
+                    colour[1] = rgb[1];
+                    colour[2] = rgb[2];
+                }
 
                 self.input.mouse_over_ui = ui.ui_contains_pointer();
             });
-
-        if let Ok(x_pos) = x_pos.parse::<f32>() {
-            self.image_display.pos[0] = x_pos;
-        }
-        if let Ok(y_pos) = y_pos.parse::<f32>() {
-            self.image_display.pos[1] = y_pos;
-        }
 
         let full_output = self.egui.platform.end_frame(Some(window));
         let paint_jobs = self.egui.platform.context().tessellate(full_output.shapes);
