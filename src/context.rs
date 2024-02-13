@@ -1,11 +1,12 @@
 use std::{
-    iter, sync::mpsc::{self, Receiver, Sender}, thread::{self, JoinHandle}
+    iter, sync::mpsc::{self, Receiver, Sender}, thread::{self, JoinHandle, Thread}, future::Future,
 };
 
 use cgmath::InnerSpace;
 use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
+use futures::executor::ThreadPool;
 use instant::Instant;
 use pollster::FutureExt;
 use rfd::FileHandle;
@@ -42,16 +43,15 @@ pub struct GraphicsContext {
     pub last_frame: Instant,
     pub egui: EguiContext,
     pub input: InputContext,
-    pub receiver: Receiver<FileHandle>,
-    pub sender: Sender<FileHandle>,
+    pub receiver: Receiver<Vec<u8>>,
+    pub sender: Sender<Vec<u8>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub thread_pool: ThreadPool,
 }
 
 pub struct EguiContext {
     pub platform: Platform,
     pub render_pass: RenderPass,
-    pub thread_handle: Option<JoinHandle<()>>,
-    // pub opened_file: Option<PathBuf>,
-    // pub open_file_dialog: Option<FileDialog>,
 }
 
 impl GraphicsContext {
@@ -207,7 +207,7 @@ impl GraphicsContext {
 
         let last_frame = Instant::now();
 
-        let (sender, receiver): (Sender<FileHandle>, Receiver<FileHandle>) = mpsc::channel();
+        let (sender, receiver) = mpsc::channel();
 
         Self {
             surface,
@@ -223,13 +223,12 @@ impl GraphicsContext {
             egui: EguiContext {
                 platform,
                 render_pass,
-                thread_handle: None,
-                // opened_file: None,
-                // open_file_dialog: None,
             },
             input: InputContext::default(),
             receiver,
             sender,
+            #[cfg(not(target_arch = "wasm32"))]
+            thread_pool: ThreadPool::new().unwrap(),
         }
     }
 
@@ -332,16 +331,14 @@ impl GraphicsContext {
                         .pick_file();
 
                     let cloned_sender = self.sender.clone();
-
-                    let thread = thread::spawn(move || {
-                        let file = dialog.block_on();
+                    self.execute(async move {
+                        let file = dialog.await;
 
                         if let Some(file) = file {
-                            cloned_sender.send(file).unwrap();
+                            let bytes = file.read().await;
+                            cloned_sender.send(bytes).unwrap();
                         }
                     });
-
-                    let _ = self.egui.thread_handle.insert(thread);
                 }
                 ui.add(egui::TextEdit::singleline(&mut x_pos));
                 ui.add(egui::TextEdit::singleline(&mut y_pos));
@@ -466,5 +463,14 @@ impl GraphicsContext {
                 self.image_display.size = f32::max(self.image_display.size, 0.001);
             }
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn execute<F: Future<Output = ()> + Send + 'static>(&self, f: F) {
+        self.thread_pool.spawn_ok(f);
+    }
+    #[cfg(target_arch = "wasm32")]
+    fn execute<F: Future<Output = ()> + 'static>(&self, f: F) {
+        wasm_bindgen_futures::spawn_local(f);
     }
 }

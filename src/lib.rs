@@ -37,15 +37,12 @@ pub fn run() {
     let window = Window::new();
     let mut context = pollster::block_on(GraphicsContext::new(&window));
 
-    let mut texture = Texture::from_bytes(&context, include_bytes!("../assets/raytrace.jpg")).unwrap();
+    let mut texture =
+        Texture::from_bytes(&context, include_bytes!("../assets/raytrace.jpg")).unwrap();
 
     window.run(move |window, event, control_flow| {
-        if let Ok(file) = context.receiver.try_recv() {
-            texture = Texture::from_bytes(
-                &context,
-                &file.read().block_on(),
-            )
-            .unwrap();
+        if let Ok(bytes) = context.receiver.try_recv() {
+            texture = Texture::from_bytes(&context, &bytes).unwrap();
         }
 
         context.egui.platform.handle_event(&event);
