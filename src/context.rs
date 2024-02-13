@@ -1,15 +1,14 @@
 use std::{
-    ffi::OsStr,
-    iter,
-    path::{Path, PathBuf},
+    iter, sync::mpsc::{self, Receiver, Sender}, thread::{self, JoinHandle}
 };
 
 use cgmath::InnerSpace;
 use egui::{Checkbox, ComboBox, Slider};
-use egui_file::FileDialog;
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use instant::Instant;
+use pollster::FutureExt;
+use rfd::FileHandle;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
@@ -43,13 +42,16 @@ pub struct GraphicsContext {
     pub last_frame: Instant,
     pub egui: EguiContext,
     pub input: InputContext,
+    pub receiver: Receiver<FileHandle>,
+    pub sender: Sender<FileHandle>,
 }
 
 pub struct EguiContext {
     pub platform: Platform,
     pub render_pass: RenderPass,
-    pub opened_file: Option<PathBuf>,
-    pub open_file_dialog: Option<FileDialog>,
+    pub thread_handle: Option<JoinHandle<()>>,
+    // pub opened_file: Option<PathBuf>,
+    // pub open_file_dialog: Option<FileDialog>,
 }
 
 impl GraphicsContext {
@@ -205,6 +207,8 @@ impl GraphicsContext {
 
         let last_frame = Instant::now();
 
+        let (sender, receiver): (Sender<FileHandle>, Receiver<FileHandle>) = mpsc::channel();
+
         Self {
             surface,
             device,
@@ -219,10 +223,13 @@ impl GraphicsContext {
             egui: EguiContext {
                 platform,
                 render_pass,
-                opened_file: None,
-                open_file_dialog: None,
+                thread_handle: None,
+                // opened_file: None,
+                // open_file_dialog: None,
             },
             input: InputContext::default(),
+            receiver,
+            sender,
         }
     }
 
@@ -319,23 +326,22 @@ impl GraphicsContext {
             .collapsible(false)
             .show(ctx, |ui| {
                 if (ui.button("Open file")).clicked() {
-                    let mut dialog = FileDialog::open_file(self.egui.opened_file.clone()).filter(
-                        Box::new(move |path: &Path| -> bool {
-                            path.extension() == Some(OsStr::new("png"))
-                                || path.extension() == Some(OsStr::new("jpg"))
-                        }),
-                    );
-                    dialog.open();
-                    self.egui.open_file_dialog = Some(dialog);
-                }
+                    let dialog = rfd::AsyncFileDialog::new()
+                        .add_filter("img", &["png", "jpg"])
+                        .set_parent(&window)
+                        .pick_file();
 
-                if let Some(dialog) = &mut self.egui.open_file_dialog {
-                    if dialog.show(ctx).selected() {
-                        if let Some(file) = dialog.path() {
-                            self.egui.opened_file = Some(file.to_path_buf());
+                    let cloned_sender = self.sender.clone();
+
+                    let thread = thread::spawn(move || {
+                        let file = dialog.block_on();
+
+                        if let Some(file) = file {
+                            cloned_sender.send(file).unwrap();
                         }
-                        self.egui.open_file_dialog.take();
-                    }
+                    });
+
+                    let _ = self.egui.thread_handle.insert(thread);
                 }
                 ui.add(egui::TextEdit::singleline(&mut x_pos));
                 ui.add(egui::TextEdit::singleline(&mut y_pos));

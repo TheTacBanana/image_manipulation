@@ -3,7 +3,7 @@ use winit::{
     event::{
         ElementState, Event, MouseButton, VirtualKeyCode,
     },
-    event_loop::{ControlFlow, EventLoop}
+    event_loop::{ControlFlow, EventLoop, EventLoopProxy}
 };
 
 #[derive(Debug)]
@@ -43,6 +43,7 @@ impl Default for Window {
 impl Window {
     pub fn new() -> Self {
         let event_loop = EventLoop::new();
+
         let raw = winit::window::Window::new(&event_loop).expect("Failed to create Window");
 
         #[cfg(target_arch = "wasm32")]
@@ -62,6 +63,10 @@ impl Window {
         }
 
         Self { event_loop, raw }
+    }
+
+    pub fn proxy(&self) -> EventLoopProxy<()> {
+        self.event_loop.create_proxy()
     }
 
     pub fn run(
