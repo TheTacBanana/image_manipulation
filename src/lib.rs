@@ -22,6 +22,7 @@ pub mod input;
 pub mod texture;
 pub mod vertex;
 pub mod window;
+pub mod thread_context;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn run() {
@@ -41,7 +42,7 @@ pub fn run() {
         Texture::from_bytes(&context, include_bytes!("../assets/raytrace.jpg")).unwrap();
 
     window.run(move |window, event, control_flow| {
-        if let Ok(bytes) = context.receiver.try_recv() {
+        if let Ok(Some(bytes)) = context.thread.receiver.try_next() {
             texture = Texture::from_bytes(&context, &bytes).unwrap();
         }
 

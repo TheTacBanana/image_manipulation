@@ -1,22 +1,22 @@
 use std::{
-    iter, sync::mpsc::{self, Receiver, Sender}, thread::{self, JoinHandle, Thread}, future::Future,
+    future::Future,
+    iter,
+    sync::mpsc::{self, Receiver, Sender},
+    thread::{self, JoinHandle, Thread},
 };
 
 use cgmath::InnerSpace;
 use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use futures::executor::ThreadPool;
+use futures::{executor::ThreadPool, SinkExt};
 use instant::Instant;
 use pollster::FutureExt;
 use rfd::FileHandle;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
-    image_display::{ImageDisplay, ScalingMode},
-    input::{CursorEvent, InputContext},
-    texture::Texture,
-    vertex::Vertex,
+    image_display::{ImageDisplay, ScalingMode}, input::{CursorEvent, InputContext}, texture::Texture, thread_context::ThreadContext, vertex::Vertex
 };
 
 use super::window::Window;
@@ -43,10 +43,7 @@ pub struct GraphicsContext {
     pub last_frame: Instant,
     pub egui: EguiContext,
     pub input: InputContext,
-    pub receiver: Receiver<Vec<u8>>,
-    pub sender: Sender<Vec<u8>>,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub thread_pool: ThreadPool,
+    pub thread: ThreadContext,
 }
 
 pub struct EguiContext {
@@ -96,7 +93,8 @@ impl GraphicsContext {
         let surface_format = surface_caps
             .formats
             .iter()
-            .copied().find(|f| f.is_srgb())
+            .copied()
+            .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
@@ -205,10 +203,6 @@ impl GraphicsContext {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        let last_frame = Instant::now();
-
-        let (sender, receiver) = mpsc::channel();
-
         Self {
             surface,
             device,
@@ -219,16 +213,13 @@ impl GraphicsContext {
             index_buffer,
             texture_layout,
             image_display,
-            last_frame,
+            last_frame : Instant::now(),
             egui: EguiContext {
                 platform,
                 render_pass,
             },
             input: InputContext::default(),
-            receiver,
-            sender,
-            #[cfg(not(target_arch = "wasm32"))]
-            thread_pool: ThreadPool::new().unwrap(),
+            thread: ThreadContext::default(),
         }
     }
 
@@ -330,13 +321,13 @@ impl GraphicsContext {
                         .set_parent(&window)
                         .pick_file();
 
-                    let cloned_sender = self.sender.clone();
-                    self.execute(async move {
+                    let mut cloned_sender = self.thread.sender.clone();
+                    self.thread.execute(async move {
                         let file = dialog.await;
 
                         if let Some(file) = file {
                             let bytes = file.read().await;
-                            cloned_sender.send(bytes).unwrap();
+                            cloned_sender.send(bytes).await.unwrap();
                         }
                     });
                 }
@@ -463,14 +454,5 @@ impl GraphicsContext {
                 self.image_display.size = f32::max(self.image_display.size, 0.001);
             }
         }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn execute<F: Future<Output = ()> + Send + 'static>(&self, f: F) {
-        self.thread_pool.spawn_ok(f);
-    }
-    #[cfg(target_arch = "wasm32")]
-    fn execute<F: Future<Output = ()> + 'static>(&self, f: F) {
-        wasm_bindgen_futures::spawn_local(f);
     }
 }
