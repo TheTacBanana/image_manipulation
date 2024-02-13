@@ -1,5 +1,3 @@
-use std::default;
-
 use wgpu::util::DeviceExt;
 
 use crate::context::GraphicsContext;

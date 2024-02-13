@@ -1,18 +1,11 @@
-use std::{
-    future::Future,
-    iter,
-    sync::mpsc::{self, Receiver, Sender},
-    thread::{self, JoinHandle, Thread},
-};
+use std::iter;
 
 use cgmath::InnerSpace;
 use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
-use futures::{executor::ThreadPool, SinkExt};
+use futures::SinkExt;
 use instant::Instant;
-use pollster::FutureExt;
-use rfd::FileHandle;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
@@ -25,26 +18,15 @@ use crate::{
 
 use super::window::Window;
 
-const VERTICES: &[Vertex] = &[
-    Vertex::xyz(1.0, 1.0, 0.0),
-    Vertex::xyz(1.0, -1.0, 0.0),
-    Vertex::xyz(-1.0, -1.0, 0.0),
-    Vertex::xyz(-1.0, 1.0, 0.0),
-];
-
-const INDICES: &[u16] = &[0, 3, 1, 1, 3, 2];
-
 pub struct GraphicsContext {
     pub surface: wgpu::Surface,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub pipeline: wgpu::RenderPipeline,
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
+    pub buffers: (wgpu::Buffer, wgpu::Buffer),
     pub texture_layout: wgpu::BindGroupLayout,
     pub image_display: ImageDisplay,
-    pub last_frame: Instant,
     pub egui: EguiContext,
     pub input: InputContext,
     pub thread: ThreadContext,
@@ -53,9 +35,19 @@ pub struct GraphicsContext {
 pub struct EguiContext {
     pub platform: Platform,
     pub render_pass: RenderPass,
+    pub last_frame: Instant,
 }
 
 impl GraphicsContext {
+    const VERTICES: &'static [Vertex] = &[
+        Vertex::xyz(1.0, 1.0, 0.0),
+        Vertex::xyz(1.0, -1.0, 0.0),
+        Vertex::xyz(-1.0, -1.0, 0.0),
+        Vertex::xyz(-1.0, 1.0, 0.0),
+    ];
+
+    const INDICES: &'static [u16] = &[0, 3, 1, 1, 3, 2];
+
     pub async fn new(window: &Window) -> Self {
         let size = window.raw.inner_size();
 
@@ -79,12 +71,10 @@ impl GraphicsContext {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     features: wgpu::Features::empty(),
-                    // WebGL doesn't support all of wgpu's features
-                    limits: if cfg!(target_arch = "wasm32") {
-                        wgpu::Limits::downlevel_webgl2_defaults()
-                    } else {
-                        wgpu::Limits::default()
-                    },
+                    #[cfg(target_arch = "wasm32")]
+                    limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                    #[cfg(not(target_arch = "wasm32"))]
+                    limits: wgpu::Limits::default(),
                     label: None,
                 },
                 None,
@@ -112,53 +102,60 @@ impl GraphicsContext {
         };
         surface.configure(&device, &config);
 
-        let platform = Platform::new(PlatformDescriptor {
-            physical_width: size.width,
-            physical_height: size.height,
-            scale_factor: window.raw.scale_factor(),
-            ..Default::default()
-        });
-
-        let render_pass = RenderPass::new(&device, surface_format, 1);
+        let egui = EguiContext {
+            platform: Platform::new(PlatformDescriptor {
+                physical_width: size.width,
+                physical_height: size.height,
+                scale_factor: window.raw.scale_factor(),
+                ..Default::default()
+            }),
+            render_pass: RenderPass::new(&device, surface_format, 1),
+            last_frame: Instant::now(),
+        };
 
         let image_display = ImageDisplay::from_window(&device, &window.raw);
 
-        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-            label: Some("texture_bind_group_layout"),
-        });
+        let texture_layout = Texture::create_bind_group_layout(&device);
 
+        let pipeline =
+            Self::create_pipeline(&device, &config, &[&texture_layout, &image_display.layout]);
+
+        let buffers = Self::create_buffers(&device);
+
+        Self {
+            surface,
+            device,
+            queue,
+            config,
+            pipeline,
+            buffers,
+            texture_layout,
+            image_display,
+            egui,
+            input: InputContext::default(),
+            thread: ThreadContext::default(),
+        }
+    }
+
+    pub fn create_pipeline(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+        bind_groups: &[&wgpu::BindGroupLayout],
+    ) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
+            label: Some("shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_layout, &image_display.layout],
+                label: Some("render_pipeline_layout"),
+                bind_group_layouts: bind_groups,
                 push_constant_ranges: &[],
             });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
+            label: Some("render_pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -195,36 +192,23 @@ impl GraphicsContext {
             multiview: None,
         });
 
+        pipeline
+    }
+
+    pub fn create_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer) {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vertex_buf"),
-            contents: bytemuck::cast_slice(VERTICES),
+            contents: bytemuck::cast_slice(GraphicsContext::VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("index_buf"),
-            contents: bytemuck::cast_slice(INDICES),
+            contents: bytemuck::cast_slice(GraphicsContext::INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        Self {
-            surface,
-            device,
-            queue,
-            config,
-            pipeline,
-            vertex_buffer,
-            index_buffer,
-            texture_layout,
-            image_display,
-            last_frame: Instant::now(),
-            egui: EguiContext {
-                platform,
-                render_pass,
-            },
-            input: InputContext::default(),
-            thread: ThreadContext::default(),
-        }
+        (vertex_buffer, index_buffer)
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -260,7 +244,7 @@ impl GraphicsContext {
         self.queue.submit(iter::once(encoder.finish()));
         output.present();
 
-        self.last_frame = Instant::now();
+        self.egui.last_frame = Instant::now();
 
         Ok(())
     }
@@ -294,9 +278,9 @@ impl GraphicsContext {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &texture.bind_group, &[]);
         render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+        render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
+        render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
     }
 
     pub fn render_egui(
@@ -307,7 +291,7 @@ impl GraphicsContext {
     ) {
         self.egui
             .platform
-            .update_time(self.last_frame.elapsed().as_secs_f64());
+            .update_time(self.egui.last_frame.elapsed().as_secs_f64());
 
         self.egui.platform.begin_frame();
 

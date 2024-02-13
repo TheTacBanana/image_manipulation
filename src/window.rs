@@ -1,5 +1,4 @@
 use winit::{
-    dpi::PhysicalSize,
     event::{
         ElementState, Event, MouseButton, VirtualKeyCode,
     },
@@ -48,7 +47,7 @@ impl Window {
 
         #[cfg(target_arch = "wasm32")]
         {
-            use winit::platform::web::WindowExtWebSys;
+            use winit::{dpi::PhysicalSize, platform::web::WindowExtWebSys};
 
             web_sys::window()
                 .and_then(|win| win.document())
