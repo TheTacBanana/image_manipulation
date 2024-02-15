@@ -49,12 +49,7 @@ fn nearest_neighbour(pos: vec2<f32>) -> vec4<f32> {
     let rounded = round((tex_pos % real_step) / real_step - vec2<f32>(0.5));
     let sample_coord = vec2<i32>(top_left + rounded);
 
-    let sample = sample_pixel(sample_coord);
-    if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
-        return sample;
-    } else {
-        return image_display.clear_colour;
-    }
+    return sample_pixel(sample_coord);
 }
 
 fn billinear_filtering(pos: vec2<f32>) -> vec4<f32> {
@@ -92,16 +87,12 @@ fn billinear_filtering(pos: vec2<f32>) -> vec4<f32> {
     let middle_middle = ((bottom_left.y - pixel_pos.y) / (bottom_left.y - top_left.y)) * top_middle +
                         ((pixel_pos.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
 
-    if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
-        return middle_middle;
-    } else {
-        return image_display.clear_colour;
-    }
+    return middle_middle;
 }
 
 fn cross_correlation(pos: vec2<f32>) -> vec4<f32> {
     let tex_pos = screen_pos_to_tex_coord(pos);
-    let virtual_step = 1.0 / (tex_size());// * image_display.scale);
+    let virtual_step = 1.0 / (tex_size() * image_display.scale);
 
     var arr = array<i32, 25>(
         -4,-1, 0,-1,-4,
@@ -113,15 +104,19 @@ fn cross_correlation(pos: vec2<f32>) -> vec4<f32> {
 
     var sum_of = vec4<f32>(0.0);
 
-    for (var row = -5; row < 6; row += 1) {
-        for (var col = -5; col < 6; col += 1) {
-            let sample_pos = pos + vec2<f32>(f32(row) / image_display.window_size.y, f32(col) / image_display.window_size.x);
-            sum_of += nearest_neighbour(sample_pos);
-        }
-    }
+    // for (var row = -2; row < 3; row += 1) {
+    //     for (var col = -2; col < 3; col += 1) {
+    //         let sample_pos = pos + vec2<f32>(f32(row) / image_display.window_size.y, f32(col) / image_display.window_size.x);
+    //         sum_of += nearest_neighbour(sample_pos);
+    //     }
+    // }
+
+
 
     if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
-        return sum_of / 100.0;
+
+        // return sum_of / 25.0;
+        return nearest_neighbour(pos - (1.0 / image_display.window_size) * 20.0);
     } else {
         return image_display.clear_colour;
     }
@@ -158,17 +153,25 @@ fn sample(pos : vec2<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // return cross_correlation(in.clip_position.xy);
+    let tex_pos = screen_pos_to_tex_coord(in.clip_position.xy);
 
-    switch image_display.scaling_mode {
-        case 0u: {
-            return gamma_correction(nearest_neighbour(in.clip_position.xy));
-        }
-        case 1u: {
-            return gamma_correction(billinear_filtering(in.clip_position.xy));
-        }
-        default: {
-            return image_display.clear_colour;
+    if tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0 {
+        discard;
+    }
+
+    if image_display.cross_correlation > 0u {
+        return cross_correlation(in.clip_position.xy);
+    } else {
+        switch image_display.scaling_mode {
+            case 0u: {
+                return gamma_correction(nearest_neighbour(in.clip_position.xy));
+            }
+            case 1u: {
+                return gamma_correction(billinear_filtering(in.clip_position.xy));
+            }
+            default: {
+                return image_display.clear_colour;
+            }
         }
     }
 }

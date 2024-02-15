@@ -262,10 +262,10 @@ impl GraphicsContext {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 1.0,
-                        g: 1.0,
-                        b: 1.0,
-                        a: 1.0,
+                        r: self.image_display.background_colour[0] as f64,
+                        g: self.image_display.background_colour[1] as f64,
+                        b: self.image_display.background_colour[2] as f64,
+                        a: self.image_display.background_colour[3] as f64,
                     }),
                     store: wgpu::StoreOp::Store,
                 },

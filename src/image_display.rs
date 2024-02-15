@@ -24,7 +24,7 @@ impl ImageDisplay {
             window.inner_size().height as f32,
         ];
 
-        let entries = (0..=7)
+        let entries = (0..=6)
             .map(|i| wgpu::BindGroupLayoutEntry {
                 binding: i,
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
@@ -48,7 +48,7 @@ impl ImageDisplay {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let entries = (0..=7)
+        let entries = (0..=6)
             .map(|i| wgpu::BindGroupEntry {
                 binding: i,
                 resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
@@ -72,7 +72,6 @@ impl ImageDisplay {
             gamma,
             scaling_mode,
             cross_correlation,
-            background_colour,
             _pad,
         } = raw_image_display;
 
@@ -83,10 +82,10 @@ impl ImageDisplay {
             gamma,
             scaling_mode: ScalingMode::from_u32(scaling_mode),
             cross_correlation: cross_correlation == 1,
-            background_colour,
             layout,
             buffer,
             bind_group,
+            background_colour: [0.0, 0.0, 0.0, 1.0],
         }
     }
 
@@ -101,7 +100,6 @@ impl ImageDisplay {
                 true => 1,
                 false => 0,
             },
-            background_colour: self.background_colour,
             ..Default::default()
         }
     }
@@ -114,7 +112,6 @@ impl ImageDisplay {
             gamma,
             scaling_mode,
             cross_correlation,
-            background_colour,
             _pad,
         } = RawImageDisplay::default();
 
@@ -124,7 +121,7 @@ impl ImageDisplay {
         self.gamma = gamma;
         self.scaling_mode = ScalingMode::from_u32(scaling_mode);
         self.cross_correlation = cross_correlation == 1;
-        self.background_colour = background_colour;
+        self.background_colour = [0.0, 0.0, 0.0, 1.0];
     }
 
     pub fn bind(&self, context: &GraphicsContext) {
@@ -143,8 +140,7 @@ pub struct RawImageDisplay {
     pub gamma: f32,
     pub scaling_mode: u32,
     pub cross_correlation: u32,
-    pub background_colour: [f32; 4],
-    pub _pad: [f32; 2],
+    pub _pad: [f32; 6],
 }
 
 impl Default for RawImageDisplay {
@@ -156,7 +152,6 @@ impl Default for RawImageDisplay {
             gamma: 1.,
             scaling_mode: 0,
             cross_correlation: 0,
-            background_colour: [0., 0., 0., 1.],
             _pad: Default::default(),
         }
     }
