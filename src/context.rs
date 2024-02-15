@@ -1,4 +1,4 @@
-use std::iter;
+use std::{iter, mem};
 
 use cgmath::InnerSpace;
 use egui::{Checkbox, ComboBox, Slider};
@@ -6,7 +6,7 @@ use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use futures::SinkExt;
 use instant::Instant;
-use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
+use wgpu::{util::DeviceExt, BindGroupDescriptor, CommandEncoder, TextureView};
 
 use crate::{
     image_display::{ImageDisplay, ScalingMode},
@@ -30,6 +30,8 @@ pub struct GraphicsContext {
     pub egui: EguiContext,
     pub input: InputContext,
     pub thread: ThreadContext,
+    pub array_buffer: wgpu::Buffer,
+    pub array_bind_group: wgpu::BindGroup,
 }
 
 pub struct EguiContext {
@@ -47,6 +49,10 @@ impl GraphicsContext {
     ];
 
     const INDICES: &'static [u16] = &[0, 3, 1, 1, 3, 2];
+
+    const LAPLACIAN: &'static [i32] = &[
+        -4, -1, 0, -1, -4, -1, 2, 3, 2, -1, 0, 3, 4, 3, 0, -1, 2, 3, 2, -1, -4, -1, 0, -1, -4,
+    ];
 
     pub async fn new(window: &Window) -> Self {
         let size = window.raw.inner_size();
@@ -117,8 +123,39 @@ impl GraphicsContext {
 
         let texture_layout = Texture::create_bind_group_layout(&device);
 
+        let array_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(
+                        (mem::size_of::<i32>() * Self::LAPLACIAN.len()) as _,
+                    ),
+                },
+                count: None,
+            }],
+            label: Some("array_bind_group_layout"),
+        });
+
+        let array_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("image_display_buf"),
+            contents: bytemuck::cast_slice(&Self::LAPLACIAN),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let array_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &array_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: array_buffer.as_entire_binding(),
+            }],
+            label: Some("image_display_bind_group"),
+        });
+
         let pipeline =
-            Self::create_pipeline(&device, &config, &[&texture_layout, &image_display.layout]);
+            Self::create_pipeline(&device, &config, &[&texture_layout, &image_display.layout, &array_layout]);
 
         let buffers = Self::create_buffers(&device);
 
@@ -134,6 +171,8 @@ impl GraphicsContext {
             egui,
             input: InputContext::default(),
             thread: ThreadContext::default(),
+            array_buffer,
+            array_bind_group,
         }
     }
 
@@ -278,6 +317,7 @@ impl GraphicsContext {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &texture.bind_group, &[]);
         render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
+        render_pass.set_bind_group(2, &self.array_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
         render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);

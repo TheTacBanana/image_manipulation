@@ -16,6 +16,9 @@ struct ImageDisplay {
 @group(1) @binding(0)
 var<uniform> image_display : ImageDisplay;
 
+@group(2) @binding(0)
+var<storage> laplacian : array<i32>;
+
 // Vertex shader
 
 struct VertexInput {
@@ -92,40 +95,47 @@ fn billinear_filtering(pos: vec2<f32>) -> vec4<f32> {
 
 fn cross_correlation(pos: vec2<f32>) -> vec4<f32> {
     let tex_pos = screen_pos_to_tex_coord(pos);
-    let virtual_step = 1.0 / (tex_size() * image_display.scale);
 
-    var arr = array<i32, 25>(
-        -4,-1, 0,-1,-4,
-        -1, 2, 3, 2,-1,
-         0, 3, 4, 3, 0,
-        -1, 2, 3, 2,-1,
-        -4,-1, 0,-1,-4
-    );
+    var results = array<vec4<f32>, 25>();
+    var first = true;
+    var mini = vec4<f32>(0.0);
+    var maxi = vec4<f32>(0.0);
 
-    var sum_of = vec4<f32>(0.0);
+    for (var row = -2; row < 3; row += 1) {
+        for (var col = -2; col < 3; col += 1) {
+            let i = (row + 2) * 5 + (col + 2);
+            let sample_pos = pos + vec2<f32>(f32(row) / image_display.window_size.y, f32(col) / image_display.window_size.x);
+            let result = nearest_neighbour(sample_pos) * f32(laplacian[i]);
 
-    // for (var row = -2; row < 3; row += 1) {
-    //     for (var col = -2; col < 3; col += 1) {
-    //         let sample_pos = pos + vec2<f32>(f32(row) / image_display.window_size.y, f32(col) / image_display.window_size.x);
-    //         sum_of += nearest_neighbour(sample_pos);
-    //     }
-    // }
+            if first {
+                mini = result;
+                maxi = result;
+                first = false;
+            } else {
+                mini = min(mini, result);
+                maxi = max(maxi, result);
+            }
 
-
-
-    if !(tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0) {
-
-        // return sum_of / 25.0;
-        return nearest_neighbour(pos - (1.0 / image_display.window_size) * 20.0);
-    } else {
-        return image_display.clear_colour;
+            results[i] = result;
+        }
     }
+
+    // let min_overall = vec4<f32>(min(mini.x, min(mini.y, mini.z)));
+    // let max_overall = vec4<f32>(max(maxi.x, max(maxi.y, maxi.z)));
+
+    let min_overall = vec4<f32>(-1.0);
+    let max_overall = vec4<f32>(100.0);
+
+    var sum = vec4<f32>(0.0);
+    for (var r = 0; r < 25; r += 1) {
+        sum += (results[r] - min_overall) / (max_overall - min_overall);
+    }
+
+    return sum;
 }
 
-
-
 fn screen_pos_to_tex_coord(pos: vec2<f32>) -> vec2<f32> {
-    return ((pos.xy - image_display.pos + (tex_size() * image_display.scale / 2.0)) / image_display.scale) / tex_size();
+    return ((pos.xy - image_display.pos - image_display.window_size / 2.0 + (tex_size() * image_display.scale / 2.0)) / image_display.scale) / tex_size();
 }
 
 fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
@@ -154,7 +164,6 @@ fn sample(pos : vec2<f32>) -> vec4<f32> {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let tex_pos = screen_pos_to_tex_coord(in.clip_position.xy);
-
     if tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0 {
         discard;
     }
