@@ -348,6 +348,60 @@ impl GraphicsContext {
             label: None,
         });
 
+        let gamma_image = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: interpolated_image.size(),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let gamma_view =
+            gamma_image.create_view(&wgpu::TextureViewDescriptor::default());
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &gamma_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.pipelines.gamma);
+            render_pass.set_bind_group(0, &interpolation_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
+            render_pass.set_bind_group(2, &self.array_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
+            render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
+        }
+
+        let gamma_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.texture_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&gamma_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&texture.sampler),
+                },
+            ],
+            label: None,
+        });
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -370,7 +424,7 @@ impl GraphicsContext {
             });
 
             render_pass.set_pipeline(&self.pipelines.output);
-            render_pass.set_bind_group(0, &interpolation_bind_group, &[]);
+            render_pass.set_bind_group(0, &gamma_bind_group, &[]);
             render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
             render_pass.set_bind_group(2, &self.array_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));

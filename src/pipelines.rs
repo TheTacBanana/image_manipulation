@@ -6,7 +6,7 @@ pub struct Pipelines {
     pub layout: wgpu::PipelineLayout,
     pub interpolation: wgpu::RenderPipeline,
     // pub reduction: wgpu::RenderPipeline,
-    // pub gamma_correction: wgpu::RenderPipeline,
+    pub gamma: wgpu::RenderPipeline,
     // pub cross_correlation: wgpu::RenderPipeline,
     pub output: wgpu::RenderPipeline,
 }
@@ -17,13 +17,16 @@ impl Pipelines {
         config: &wgpu::SurfaceConfiguration,
         bind_groups: &[&wgpu::BindGroupLayout],
     ) -> Self {
-        // let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl");
         let s_interpolation = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("interpolation"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader/interpolation.wgsl").into()),
         });
 
-        // let s_output = Pipelines::load_shader(device, "./shader/output.wgsl");
+        let s_gamma = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("gamma"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader/gamma_correction.wgsl").into()),
+        });
+
         let s_output = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("output"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader/output.wgsl").into()),
@@ -32,11 +35,13 @@ impl Pipelines {
         let layout = Pipelines::create_pipeline_layout(device, bind_groups);
 
         let interpolation = Pipelines::create_pipeline(device, config, s_interpolation, &layout);
+        let gamma = Pipelines::create_pipeline(device, config, s_gamma, &layout);
         let output = Pipelines::create_pipeline(device, config, s_output, &layout);
 
         Pipelines {
             layout,
             interpolation,
+            gamma,
             output,
         }
     }
