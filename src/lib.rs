@@ -17,6 +17,7 @@ use wasm_bindgen::prelude::*;
 use crate::texture::load_bytes;
 
 pub mod context;
+pub mod pipelines;
 pub mod image_display;
 pub mod input;
 pub mod texture;
