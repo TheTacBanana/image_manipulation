@@ -44,7 +44,8 @@ fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 fn screen_pos_to_tex_coord(pos: vec2<f32>) -> vec2<f32> {
-    return ((pos.xy - image_display.pos - image_display.window_size / 2.0 + (tex_size() * image_display.scale / 2.0)) / image_display.scale) / tex_size();
+    return ((pos - image_display.pos - image_display.window_size / 2.0 + tex_size() / 2.0) / tex_size());
+    // return ((pos.xy - image_display.pos - image_display.window_size / 2.0 + (tex_size() * image_display.scale / 2.0)) / image_display.scale) / tex_size();
 }
 
 fn sample(pos : vec2<f32>) -> vec4<f32> {
@@ -57,6 +58,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0 {
         discard;
     }
-
     return sample(tex_pos);
 }

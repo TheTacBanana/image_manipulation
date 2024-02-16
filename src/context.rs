@@ -183,64 +183,6 @@ impl GraphicsContext {
         }
     }
 
-    pub fn create_pipeline(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-        bind_groups: &[&wgpu::BindGroupLayout],
-    ) -> wgpu::RenderPipeline {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
-
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("render_pipeline_layout"),
-                bind_group_layouts: bind_groups,
-                push_constant_ranges: &[],
-            });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("render_pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[Vertex::desc()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent::REPLACE,
-                        alpha: wgpu::BlendComponent::REPLACE,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        });
-
-        pipeline
-    }
-
     pub fn create_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer) {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vertex_buf"),
@@ -287,8 +229,14 @@ impl GraphicsContext {
         let interpolated_image = self.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
-                width: (texture.texture.width() as f32 * self.image_display.size).floor() as u32,
-                height: (texture.texture.height() as f32 * self.image_display.size).floor() as u32,
+                width: u32::max(
+                    1,
+                    (texture.texture.width() as f32 * self.image_display.size).floor() as u32,
+                ),
+                height: u32::max(
+                    1,
+                    (texture.texture.height() as f32 * self.image_display.size).floor() as u32,
+                ),
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -304,7 +252,6 @@ impl GraphicsContext {
         let interpolated_image_view =
             interpolated_image.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // self.interpolate_image(&mut encoder, &interpolated_image_view, texture);
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -444,41 +391,6 @@ impl GraphicsContext {
 
         Ok(())
     }
-
-    // pub fn interpolate_image(
-    //     &self,
-    //     encoder: &mut CommandEncoder,
-    //     view: &TextureView,
-    //     texture: &Texture,
-    // ) {
-    //     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-    //         label: Some("Render Pass"),
-    //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-    //             view,
-    //             resolve_target: None,
-    //             ops: wgpu::Operations {
-    //                 load: wgpu::LoadOp::Clear(wgpu::Color {
-    //                     r: 0.0, //self.image_display.background_colour[0] as f64,
-    //                     g: 0.0, //self.image_display.background_colour[1] as f64,
-    //                     b: 0.0, //self.image_display.background_colour[2] as f64,
-    //                     a: 1.0, //self.image_display.background_colour[3] as f64,
-    //                 }),
-    //                 store: wgpu::StoreOp::Store,
-    //             },
-    //         })],
-    //         depth_stencil_attachment: None,
-    //         occlusion_query_set: None,
-    //         timestamp_writes: None,
-    //     });
-
-    //     render_pass.set_pipeline(&self.pipeline);
-    //     render_pass.set_bind_group(0, &texture.bind_group, &[]);
-    //     render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-    //     render_pass.set_bind_group(2, &self.array_bind_group, &[]);
-    //     render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
-    //     render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
-    //     render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
-    // }
 
     pub fn render_egui(
         &mut self,

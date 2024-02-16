@@ -17,20 +17,9 @@ impl Pipelines {
         config: &wgpu::SurfaceConfiguration,
         bind_groups: &[&wgpu::BindGroupLayout],
     ) -> Self {
-        let s_interpolation = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("interpolation"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader/interpolation.wgsl").into()),
-        });
-
-        let s_gamma = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("output"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader/gamma_correction.wgsl").into()),
-        });
-
-        let s_output = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("output"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader/output.wgsl").into()),
-        });
+        let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl");
+        let s_gamma = Pipelines::load_shader(device, "./src/shader/gamma_correction.wgsl");
+        let s_output = Pipelines::load_shader(device, "./src/shader/output.wgsl");
 
         let layout = Pipelines::create_pipeline_layout(device, bind_groups);
 
