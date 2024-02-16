@@ -295,7 +295,9 @@ impl GraphicsContext {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
 
@@ -311,10 +313,10 @@ impl GraphicsContext {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0, //self.image_display.background_colour[0] as f64,
-                            g: 0.0, //self.image_display.background_colour[1] as f64,
-                            b: 0.0, //self.image_display.background_colour[2] as f64,
-                            a: 1.0, //self.image_display.background_colour[3] as f64,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -355,12 +357,13 @@ impl GraphicsContext {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
 
-        let gamma_view =
-            gamma_image.create_view(&wgpu::TextureViewDescriptor::default());
+        let gamma_view = gamma_image.create_view(&wgpu::TextureViewDescriptor::default());
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

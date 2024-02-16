@@ -23,7 +23,7 @@ impl Pipelines {
         });
 
         let s_gamma = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("gamma"),
+            label: Some("output"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader/gamma_correction.wgsl").into()),
         });
 
