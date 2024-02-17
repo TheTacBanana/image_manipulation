@@ -43,9 +43,9 @@ fn vs_main(
 fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
+
 fn screen_pos_to_tex_coord(pos: vec2<f32>) -> vec2<f32> {
     return ((pos - image_display.pos - image_display.window_size / 2.0 + tex_size() / 2.0) / tex_size());
-    // return ((pos.xy - image_display.pos - image_display.window_size / 2.0 + (tex_size() * image_display.scale / 2.0)) / image_display.scale) / tex_size();
 }
 
 fn sample(pos : vec2<f32>) -> vec4<f32> {

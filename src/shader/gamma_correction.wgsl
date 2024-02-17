@@ -51,15 +51,17 @@ fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
     );
 }
 
-fn sample(pos : vec2<f32>) -> vec4<f32> {
-    return textureSample(t_diffuse, s_diffuse, pos);
-}
-
 fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 
+fn sample(pos : vec2<f32>) -> vec4<f32> {
+    let clamped = min(max(vec2<i32>(pos), vec2<i32>(0)), vec2<i32>(tex_size()));
+    let transformed = (vec2<f32>(clamped) + vec2<f32>(0.5)) / tex_size();
+    return textureSample(t_diffuse, s_diffuse, transformed);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return gamma_correction(sample(in.clip_position.xy / (tex_size() * image_display.scale)));
+    return gamma_correction(sample(in.clip_position.xy));
 }

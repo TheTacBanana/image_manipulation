@@ -6,7 +6,7 @@ use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use futures::SinkExt;
 use instant::Instant;
-use wgpu::{util::DeviceExt, BindGroupDescriptor, CommandEncoder, TextureView};
+use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
     image_display::{ImageDisplay, ScalingMode},
@@ -226,17 +226,22 @@ impl GraphicsContext {
                 label: Some("Render Encoder"),
             });
 
+        let texture_dims = (
+            u32::max(
+                1,
+                (texture.texture.width() as f32 * self.image_display.size).floor() as u32,
+            ),
+            u32::max(
+                1,
+                (texture.texture.height() as f32 * self.image_display.size).floor() as u32,
+            ),
+        );
+
         let interpolated_image = self.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
-                width: u32::max(
-                    1,
-                    (texture.texture.width() as f32 * self.image_display.size).floor() as u32,
-                ),
-                height: u32::max(
-                    1,
-                    (texture.texture.height() as f32 * self.image_display.size).floor() as u32,
-                ),
+                width: texture_dims.0,
+                height: texture_dims.1,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -245,6 +250,7 @@ impl GraphicsContext {
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC
                 | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -561,7 +567,7 @@ impl GraphicsContext {
             CursorEvent::Scroll(scroll) => {
                 self.image_display.size +=
                     scroll * (self.image_display.size * self.image_display.size + 1.1).log10();
-                self.image_display.size = f32::max(self.image_display.size, 0.001);
+                self.image_display.size = f32::min(f32::max(self.image_display.size, 0.001), 10.0);
             }
         }
     }
