@@ -1,7 +1,7 @@
 use std::{iter, mem};
 
 use cgmath::InnerSpace;
-use egui::{Checkbox, ComboBox, Slider};
+use egui::{epaint::text, Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use futures::SinkExt;
@@ -265,31 +265,48 @@ impl GraphicsContext {
             );
             render_groups.reverse();
 
-            let reducted = self.create_render_group((texture_dims.0 / 2, texture_dims.1 / 2));
-            // println!(
-            //     "{:?} {:?}",
-            //     render_groups[0].texture.size(),
-            //     reducted.texture.size()
+            let size = u32::max(
+                texture_dims.0.next_power_of_two(),
+                texture_dims.0.next_power_of_two(),
+            );
+            let padded = self.create_render_group((size, size));
+
+            // Pad the image to a power of 2
+            self.render_pass(
+                &mut encoder,
+                &self.pipelines.pad,
+                &render_groups[0].bind_group,
+                &padded.view,
+                false,
+            );
+
+            let mut reductions = vec![padded];
+
+            (0..size.ilog2()).rev().for_each(|i| {
+                let m = 2u32.pow(i);
+                let dims = (m, m);
+
+                reductions.push(self.create_render_group(dims));
+            });
+
+            reductions.windows(2).for_each(|reductions| {
+                self.render_pass(
+                    &mut encoder,
+                    &self.pipelines.reduction,
+                    &reductions[0].bind_group,
+                    &reductions[1].view,
+                    false,
+                )
+            })
+
+            // self.render_pass(
+            //     &mut encoder,
+            //     &self.pipelines.normalize,
+            //     &render_groups[0].bind_group,
+            //     &render_groups[1].view,
+            //     false,
             // );
-
-            self.render_pass(
-                &mut encoder,
-                &self.pipelines.reduction,
-                &render_groups[0].bind_group,
-                &reducted.view,
-                false,
-            );
-            // render_groups[1] = reducted;
-            // render_groups.reverse();
-
-            self.render_pass(
-                &mut encoder,
-                &self.pipelines.normalize,
-                &render_groups[0].bind_group,
-                &render_groups[1].view,
-                false,
-            );
-            render_groups.reverse()
+            // render_groups.reverse()
         }
 
         // Gamma correct the interpolated image
