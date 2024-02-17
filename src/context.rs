@@ -237,123 +237,33 @@ impl GraphicsContext {
             ),
         );
 
-        let interpolated_image = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size: wgpu::Extent3d {
-                width: texture_dims.0,
-                height: texture_dims.1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
-        let interpolated_image_view =
-            interpolated_image.create_view(&wgpu::TextureViewDescriptor::default());
-
-        self.render_pass(
-            &mut encoder,
-            &self.pipelines.interpolation,
-            &texture.bind_group,
-            &interpolated_image_view,
-            true,
-        );
-
-        let interpolation_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &self.texture_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&interpolated_image_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&texture.sampler),
-                },
-            ],
-            label: None,
-        });
-
-        if self.image_display.cross_correlation {
-            let kernelled = self.device.create_texture(&wgpu::TextureDescriptor {
+        let mut groups = (0..2).map(|_| {
+            let tex = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: None,
-                size: interpolated_image.size(),
+                size: wgpu::Extent3d {
+                    width: texture_dims.0,
+                    height: texture_dims.1,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Bgra8UnormSrgb,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                     | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC
                     | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
 
-            let kernelled_view = kernelled.create_view(&wgpu::TextureViewDescriptor::default());
+            let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
 
-            // Apply kernel to interpolated image
-            self.render_pass(
-                &mut encoder,
-                &self.pipelines.kernel,
-                &interpolation_bind_group,
-                &kernelled_view,
-                false,
-            );
-
-            let kernel_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &self.texture_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&kernelled_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&texture.sampler),
-                    },
-                ],
-                label: None,
-            });
-
-
-        }
-
-        let gamma_image = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size: interpolated_image.size(),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
-        let gamma_view = gamma_image.create_view(&wgpu::TextureViewDescriptor::default());
-
-        // Gamma correct the interpolated image
-        self.render_pass(
-            &mut encoder,
-            &self.pipelines.kernel,
-            &interpolation_bind_group,
-            &gamma_view,
-            false,
-        );
-
-        let gamma_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.texture_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&gamma_view),
+                    resource: wgpu::BindingResource::TextureView(&view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -362,12 +272,44 @@ impl GraphicsContext {
             ],
             label: None,
         });
+            (tex, view, bind_group)
+        }).collect::<Vec<_>>();
+
+        // Interpolate image
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.interpolation,
+            &texture.bind_group,
+            &groups[0].1,
+            true,
+        );
+
+        if self.image_display.cross_correlation {
+            // Apply kernel to interpolated image
+            // self.render_pass(
+            //     &mut encoder,
+            //     &self.pipelines.kernel,
+            //     &interpolation_bind_group,
+            //     &kernelled_view,
+            //     false,
+            // );
+        }
+
+        // Gamma correct the interpolated image
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.kernel,
+            &groups[0].2,
+            &groups[1].1,
+            false,
+        );
+        groups.reverse();
 
         // Render the modified tex to screenspace
         self.render_pass(
             &mut encoder,
             &self.pipelines.output,
-            &gamma_bind_group,
+            &groups[0].2,
             &view,
             true,
         );
