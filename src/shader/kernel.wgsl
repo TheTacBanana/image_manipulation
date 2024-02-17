@@ -40,15 +40,15 @@ fn vs_main(
 // Fragment shader
 
 fn apply_kernel(pos: vec2<f32>) -> vec4<f32> {
-    var sum = vec4<f32>(0.0);
+    var sum = vec3<f32>(0.0);
     for (var row = -2; row < 3; row += 1) {
         for (var col = -2; col < 3; col += 1) {
             let i = (row + 2) * 5 + (col + 2);
             let sample_pos = pos + vec2<f32>(f32(row), f32(col));
-            sum += sample(sample_pos) * f32(laplacian[i]);
+            sum += sample(sample_pos).xyz * f32(laplacian[i]);
         }
     }
-    return sum;
+    return vec4<f32>(sum, 1.0);
 }
 
 fn tex_size() -> vec2<f32> {

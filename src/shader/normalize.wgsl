@@ -18,6 +18,11 @@ var<uniform> image_display : ImageDisplay;
 @group(2) @binding(0)
 var<storage> laplacian : array<i32>;
 
+@group(3) @binding(0)
+var mini_max_diffuse: texture_2d<f32>;
+@group(3) @binding(1)
+var mini_max_sampler: sampler;
+
 // Vertex shader
 
 struct VertexInput {
@@ -50,9 +55,10 @@ fn sample(pos : vec2<f32>) -> vec4<f32> {
 }
 
 fn normalize(colour: vec4<f32>) -> vec4<f32> {
-    let mini = image_display.global_min_max.x;
-    let maxi = image_display.global_min_max.y;
-    return (colour - mini) / (maxi - mini);
+    let mini_maxi = textureSample(mini_max_diffuse, mini_max_sampler, vec2<f32>(0.5));
+    let mini = mini_maxi.x;
+    let maxi = mini_maxi.y;
+    return vec4<f32>((colour.xyz - mini) / (maxi - mini), 1.0);
 }
 
 @fragment

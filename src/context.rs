@@ -267,7 +267,7 @@ impl GraphicsContext {
 
             let size = u32::max(
                 texture_dims.0.next_power_of_two(),
-                texture_dims.0.next_power_of_two(),
+                texture_dims.1.next_power_of_two(),
             );
             let padded = self.create_render_group((size, size));
 
@@ -280,33 +280,52 @@ impl GraphicsContext {
                 false,
             );
 
+            // Create increasingly smaller buffers to reduce into until a size of (1, 1)
             let mut reductions = vec![padded];
-
             (0..size.ilog2()).rev().for_each(|i| {
                 let m = 2u32.pow(i);
                 let dims = (m, m);
-
                 reductions.push(self.create_render_group(dims));
             });
 
-            reductions.windows(2).for_each(|reductions| {
+            // Render the reductions
+            reductions.windows(2).for_each(|r| {
                 self.render_pass(
                     &mut encoder,
                     &self.pipelines.reduction,
-                    &reductions[0].bind_group,
-                    &reductions[1].view,
+                    &r[0].bind_group,
+                    &r[1].view,
                     false,
                 )
-            })
+            });
 
-            // self.render_pass(
-            //     &mut encoder,
-            //     &self.pipelines.normalize,
-            //     &render_groups[0].bind_group,
-            //     &render_groups[1].view,
-            //     false,
-            // );
-            // render_groups.reverse()
+            // println!("{:?}", reductions.last().unwrap().texture.size());
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &render_groups[1].view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
+
+                render_pass.set_pipeline(&self.pipelines.normalize);
+                render_pass.set_bind_group(0, &render_groups[0].bind_group, &[]);
+                render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
+                render_pass.set_bind_group(2, &self.array_bind_group, &[]);
+                render_pass.set_bind_group(3, &reductions.last().unwrap().bind_group, &[]);
+                render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
+                render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
+            }
+            render_groups.reverse()
         }
 
         // Gamma correct the interpolated image

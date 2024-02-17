@@ -29,11 +29,14 @@ impl Pipelines {
 
         let layout = Pipelines::create_pipeline_layout(device, bind_groups);
 
+        let normalize_bindings = [bind_groups[0], bind_groups[1], bind_groups[2], bind_groups[0]];
+        let normalize_layout = Pipelines::create_pipeline_layout(device, &normalize_bindings);
+
         let interpolation = Pipelines::create_pipeline(device, config, s_interpolation, &layout);
         let kernel = Pipelines::create_pipeline(device, config, s_kernel, &layout);
         let pad = Pipelines::create_pipeline(device, config, s_pad, &layout);
         let reduction = Pipelines::create_pipeline(device, config, s_reduction, &layout);
-        let normalize = Pipelines::create_pipeline(device, config, s_normalize, &layout);
+        let normalize = Pipelines::create_pipeline(device, config, s_normalize, &normalize_layout);
         let gamma = Pipelines::create_pipeline(device, config, s_gamma, &layout);
         let output = Pipelines::create_pipeline(device, config, s_output, &layout);
 

@@ -52,7 +52,7 @@ fn max_in_vec(colour : vec2<f32>) -> f32 {
 }
 
 fn sample(point : vec2<f32>) -> vec2<f32> {
-    return textureSample(t_diffuse, s_diffuse, point).xy;
+    return textureSample(t_diffuse, s_diffuse, point + vec2<f32>(0.5)).xy;
 }
 
 @fragment
