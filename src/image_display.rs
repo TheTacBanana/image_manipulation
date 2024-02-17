@@ -71,8 +71,7 @@ impl ImageDisplay {
             size,
             gamma,
             scaling_mode,
-            cross_correlation,
-            _pad,
+            ..
         } = raw_image_display;
 
         ImageDisplay {
@@ -81,7 +80,7 @@ impl ImageDisplay {
             size,
             gamma,
             scaling_mode: ScalingMode::from_u32(scaling_mode),
-            cross_correlation: cross_correlation == 1,
+            cross_correlation: false,
             layout,
             buffer,
             bind_group,
@@ -96,10 +95,6 @@ impl ImageDisplay {
             size: self.size,
             gamma: self.gamma,
             scaling_mode: self.scaling_mode as u32,
-            cross_correlation: match self.cross_correlation {
-                true => 1,
-                false => 0,
-            },
             ..Default::default()
         }
     }
@@ -111,8 +106,7 @@ impl ImageDisplay {
             size,
             gamma,
             scaling_mode,
-            cross_correlation,
-            _pad,
+            ..
         } = RawImageDisplay::default();
 
         self.window_size = window_size;
@@ -120,7 +114,6 @@ impl ImageDisplay {
         self.size = size;
         self.gamma = gamma;
         self.scaling_mode = ScalingMode::from_u32(scaling_mode);
-        self.cross_correlation = cross_correlation == 1;
         self.background_colour = [0.0, 0.0, 0.0, 1.0];
     }
 
@@ -139,8 +132,8 @@ pub struct RawImageDisplay {
     pub size: f32,
     pub gamma: f32,
     pub scaling_mode: u32,
-    pub cross_correlation: u32,
-    pub _pad: [f32; 6],
+    pub global_min_max: [f32; 2],
+    pub _pad: [f32; 5],
 }
 
 impl Default for RawImageDisplay {
@@ -151,7 +144,7 @@ impl Default for RawImageDisplay {
             size: 1.,
             gamma: 1.,
             scaling_mode: 0,
-            cross_correlation: 0,
+            global_min_max: [0.0, 1.0],
             _pad: Default::default(),
         }
     }

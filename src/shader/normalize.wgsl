@@ -43,19 +43,19 @@ fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 
-fn screen_pos_to_tex_coord(pos: vec2<f32>) -> vec2<f32> {
-    return ((pos - image_display.pos - image_display.window_size / 2.0 + tex_size() / 2.0) / tex_size());
+fn sample(pos : vec2<f32>) -> vec4<f32> {
+    let clamped = min(max(vec2<i32>(pos), vec2<i32>(0)), vec2<i32>(tex_size()));
+    let transformed = (vec2<f32>(clamped) + vec2<f32>(0.5)) / tex_size();
+    return textureSample(t_diffuse, s_diffuse, transformed);
 }
 
-fn sample(pos : vec2<f32>) -> vec4<f32> {
-    return textureSample(t_diffuse, s_diffuse, pos);
+fn normalize(colour: vec4<f32>) -> vec4<f32> {
+    let mini = image_display.global_min_max.x;
+    let maxi = image_display.global_min_max.y;
+    return (colour - mini) / (maxi - mini);
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let tex_pos = screen_pos_to_tex_coord(in.clip_position.xy);
-    if tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0 {
-        discard;
-    }
-    return sample(tex_pos);
+    return sample(in.clip_position.xy);
 }

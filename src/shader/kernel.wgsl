@@ -39,23 +39,29 @@ fn vs_main(
 
 // Fragment shader
 
+fn apply_kernel(pos: vec2<f32>) -> vec4<f32> {
+    var sum = vec4<f32>(0.0);
+    for (var row = -2; row < 3; row += 1) {
+        for (var col = -2; col < 3; col += 1) {
+            let i = (row + 2) * 5 + (col + 2);
+            let sample_pos = pos + vec2<f32>(f32(row), f32(col));
+            sum += sample(sample_pos) * f32(laplacian[i]);
+        }
+    }
+    return sum;
+}
+
 fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 
-fn screen_pos_to_tex_coord(pos: vec2<f32>) -> vec2<f32> {
-    return ((pos - image_display.pos - image_display.window_size / 2.0 + tex_size() / 2.0) / tex_size());
-}
-
 fn sample(pos : vec2<f32>) -> vec4<f32> {
-    return textureSample(t_diffuse, s_diffuse, pos);
+    let clamped = min(max(vec2<i32>(pos), vec2<i32>(0)), vec2<i32>(tex_size()));
+    let transformed = (vec2<f32>(clamped) + vec2<f32>(0.5)) / tex_size();
+    return textureSample(t_diffuse, s_diffuse, transformed);
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let tex_pos = screen_pos_to_tex_coord(in.clip_position.xy);
-    if tex_pos.x < 0.0 || tex_pos.y < 0.0 || tex_pos.x > 1.0 || tex_pos.y > 1.0 {
-        discard;
-    }
-    return sample(tex_pos);
+    return apply_kernel(in.clip_position.xy);
 }

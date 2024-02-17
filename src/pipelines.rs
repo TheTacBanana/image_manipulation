@@ -5,9 +5,10 @@ use crate::{texture::load_bytes, vertex::Vertex};
 pub struct Pipelines {
     pub layout: wgpu::PipelineLayout,
     pub interpolation: wgpu::RenderPipeline,
+    pub kernel: wgpu::RenderPipeline,
     // pub reduction: wgpu::RenderPipeline,
+    pub normalize: wgpu::RenderPipeline,
     pub gamma: wgpu::RenderPipeline,
-    // pub cross_correlation: wgpu::RenderPipeline,
     pub output: wgpu::RenderPipeline,
 }
 
@@ -18,18 +19,24 @@ impl Pipelines {
         bind_groups: &[&wgpu::BindGroupLayout],
     ) -> Self {
         let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl");
+        let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl");
+        let s_normalize = Pipelines::load_shader(device, "./src/shader/normalize.wgsl");
         let s_gamma = Pipelines::load_shader(device, "./src/shader/gamma_correction.wgsl");
         let s_output = Pipelines::load_shader(device, "./src/shader/output.wgsl");
 
         let layout = Pipelines::create_pipeline_layout(device, bind_groups);
 
         let interpolation = Pipelines::create_pipeline(device, config, s_interpolation, &layout);
+        let kernel = Pipelines::create_pipeline(device, config, s_kernel, &layout);
+        let normalize = Pipelines::create_pipeline(device, config, s_normalize, &layout);
         let gamma = Pipelines::create_pipeline(device, config, s_gamma, &layout);
         let output = Pipelines::create_pipeline(device, config, s_output, &layout);
 
         Pipelines {
             layout,
             interpolation,
+            kernel,
+            normalize,
             gamma,
             output,
         }

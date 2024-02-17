@@ -9,8 +9,7 @@ struct ImageDisplay {
     scale: f32,
     gamma: f32,
     scaling_mode: u32,
-    cross_correlation: u32,
-    clear_colour: vec4<f32>
+    global_min_max: vec2<f32>,
 };
 
 @group(1) @binding(0)

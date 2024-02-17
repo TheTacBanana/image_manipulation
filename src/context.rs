@@ -258,35 +258,13 @@ impl GraphicsContext {
         let interpolated_image_view =
             interpolated_image.create_view(&wgpu::TextureViewDescriptor::default());
 
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &interpolated_image_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            render_pass.set_pipeline(&self.pipelines.interpolation);
-            render_pass.set_bind_group(0, &texture.bind_group, &[]);
-            render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.array_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
-            render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
-        }
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.interpolation,
+            &texture.bind_group,
+            &interpolated_image_view,
+            true,
+        );
 
         let interpolation_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.texture_layout,
@@ -303,6 +281,49 @@ impl GraphicsContext {
             label: None,
         });
 
+        if self.image_display.cross_correlation {
+            let kernelled = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: interpolated_image.size(),
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+
+            let kernelled_view = kernelled.create_view(&wgpu::TextureViewDescriptor::default());
+
+            // Apply kernel to interpolated image
+            self.render_pass(
+                &mut encoder,
+                &self.pipelines.kernel,
+                &interpolation_bind_group,
+                &kernelled_view,
+                false,
+            );
+
+            let kernel_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &self.texture_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&kernelled_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&texture.sampler),
+                    },
+                ],
+                label: None,
+            });
+
+
+        }
+
         let gamma_image = self.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: interpolated_image.size(),
@@ -318,30 +339,14 @@ impl GraphicsContext {
 
         let gamma_view = gamma_image.create_view(&wgpu::TextureViewDescriptor::default());
 
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &gamma_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            render_pass.set_pipeline(&self.pipelines.gamma);
-            render_pass.set_bind_group(0, &interpolation_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.array_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
-            render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
-        }
+        // Gamma correct the interpolated image
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.kernel,
+            &interpolation_bind_group,
+            &gamma_view,
+            false,
+        );
 
         let gamma_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.texture_layout,
@@ -358,36 +363,16 @@ impl GraphicsContext {
             label: None,
         });
 
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: self.image_display.background_colour[0] as f64,
-                            g: self.image_display.background_colour[1] as f64,
-                            b: self.image_display.background_colour[2] as f64,
-                            a: self.image_display.background_colour[3] as f64,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
+        // Render the modified tex to screenspace
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.output,
+            &gamma_bind_group,
+            &view,
+            true,
+        );
 
-            render_pass.set_pipeline(&self.pipelines.output);
-            render_pass.set_bind_group(0, &gamma_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.array_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
-            render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
-        }
-
+        // Render UI
         self.render_egui(&mut encoder, &view, window);
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -396,6 +381,48 @@ impl GraphicsContext {
         self.egui.last_frame = Instant::now();
 
         Ok(())
+    }
+
+    pub fn render_pass(
+        &self,
+        encoder: &mut CommandEncoder,
+        pipeline: &wgpu::RenderPipeline,
+        tex_in: &wgpu::BindGroup,
+        tex_out: &wgpu::TextureView,
+        clear: bool,
+    ) {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &tex_out,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: {
+                        match clear {
+                            true => wgpu::LoadOp::Clear(wgpu::Color {
+                                r: self.image_display.background_colour[0] as f64,
+                                g: self.image_display.background_colour[1] as f64,
+                                b: self.image_display.background_colour[2] as f64,
+                                a: self.image_display.background_colour[3] as f64,
+                            }),
+                            false => wgpu::LoadOp::Load,
+                        }
+                    },
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
+
+        render_pass.set_pipeline(&pipeline);
+        render_pass.set_bind_group(0, &tex_in, &[]);
+        render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
+        render_pass.set_bind_group(2, &self.array_bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
+        render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
     }
 
     pub fn render_egui(
