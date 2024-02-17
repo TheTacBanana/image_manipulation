@@ -43,14 +43,6 @@ fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 
-fn min_in_vec(colour : vec2<f32>) -> f32 {
-    return min(colour.x, colour.y);
-}
-
-fn max_in_vec(colour : vec2<f32>) -> f32 {
-    return max(colour.x, colour.y);
-}
-
 fn sample(point : vec2<f32>) -> vec2<f32> {
     return textureSample(t_diffuse, s_diffuse, point + vec2<f32>(0.5)).xy;
 }
@@ -64,8 +56,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let bottom_left = sample(top_left_p + vec2<f32>(0.0, 1.0));
     let bottom_right = sample(top_left_p + vec2<f32>(1.0, 1.0));
 
-    let min = min(min(min_in_vec(top_left), min_in_vec(top_right)), min(min_in_vec(bottom_left), min_in_vec(bottom_right)));
-    let max = max(max(max_in_vec(top_left), max_in_vec(top_right)), max(max_in_vec(bottom_left), max_in_vec(bottom_right)));
+    let min = min(min(top_left.x, top_right.x), min(bottom_left.x, bottom_right.x));
+    let max = max(max(top_left.y, top_right.y), max(bottom_left.y, bottom_right.y));
 
     return vec4<f32>(min, max, 0.0, 1.0);
 }
