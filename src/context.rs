@@ -27,6 +27,7 @@ pub struct GraphicsContext {
     // pub pipeline: wgpu::RenderPipeline,
     pub pipelines: Pipelines,
     pub buffers: (wgpu::Buffer, wgpu::Buffer),
+    pub texture_sampler: wgpu::Sampler,
     pub texture_layout: wgpu::BindGroupLayout,
     pub image_display: ImageDisplay,
     pub egui: EguiContext,
@@ -40,6 +41,12 @@ pub struct EguiContext {
     pub platform: Platform,
     pub render_pass: RenderPass,
     pub last_frame: Instant,
+}
+
+pub struct RenderGroup {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    bind_group: wgpu::BindGroup,
 }
 
 impl GraphicsContext {
@@ -124,6 +131,7 @@ impl GraphicsContext {
         let image_display = ImageDisplay::from_window(&device, &window.raw);
 
         let texture_layout = Texture::create_bind_group_layout(&device);
+        let texture_sampler = Texture::create_sampler(&device);
 
         let array_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -173,6 +181,7 @@ impl GraphicsContext {
             config,
             pipelines,
             buffers,
+            texture_sampler,
             texture_layout,
             image_display,
             egui,
@@ -215,11 +224,6 @@ impl GraphicsContext {
     ) -> Result<(), wgpu::SurfaceError> {
         self.image_display.bind(self);
 
-        let output = self.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -237,28 +241,116 @@ impl GraphicsContext {
             ),
         );
 
-        let mut groups = (0..2).map(|_| {
-            let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: None,
-                size: wgpu::Extent3d {
-                    width: texture_dims.0,
-                    height: texture_dims.1,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Bgra8UnormSrgb,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::COPY_DST
-                    | wgpu::TextureUsages::COPY_SRC
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
+        let mut render_groups = (0..2)
+            .map(|_| self.create_render_group(texture_dims))
+            .collect::<Vec<_>>();
 
-            let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+        // Interpolate image
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.interpolation,
+            &texture.bind_group,
+            &render_groups[0].view,
+            true,
+        );
 
-            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        if self.image_display.cross_correlation {
+            // Apply kernel to interpolated image
+            self.render_pass(
+                &mut encoder,
+                &self.pipelines.kernel,
+                &render_groups[0].bind_group,
+                &render_groups[1].view,
+                false,
+            );
+            render_groups.reverse();
+
+            let reducted = self.create_render_group((texture_dims.0 / 2, texture_dims.1 / 2));
+            // println!(
+            //     "{:?} {:?}",
+            //     render_groups[0].texture.size(),
+            //     reducted.texture.size()
+            // );
+
+            self.render_pass(
+                &mut encoder,
+                &self.pipelines.reduction,
+                &render_groups[0].bind_group,
+                &reducted.view,
+                false,
+            );
+            // render_groups[1] = reducted;
+            // render_groups.reverse();
+
+            self.render_pass(
+                &mut encoder,
+                &self.pipelines.normalize,
+                &render_groups[0].bind_group,
+                &render_groups[1].view,
+                false,
+            );
+            render_groups.reverse()
+        }
+
+        // Gamma correct the interpolated image
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.gamma,
+            &render_groups[0].bind_group,
+            &render_groups[1].view,
+            false,
+        );
+        render_groups.reverse();
+
+        // Get current screen texture
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Render the modified tex to screenspace
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.output,
+            &render_groups[0].bind_group,
+            &view,
+            true,
+        );
+
+        // Render UI
+        self.render_egui(&mut encoder, &view, window);
+
+        // Submit all work to queue and present
+        self.queue.submit(iter::once(encoder.finish()));
+        output.present();
+
+        self.egui.last_frame = Instant::now();
+
+        Ok(())
+    }
+
+    pub fn create_render_group(&self, dims: (u32, u32)) -> RenderGroup {
+        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: dims.0,
+                height: dims.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.texture_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -267,62 +359,16 @@ impl GraphicsContext {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&texture.sampler),
+                    resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
                 },
             ],
             label: None,
         });
-            (tex, view, bind_group)
-        }).collect::<Vec<_>>();
-
-        // Interpolate image
-        self.render_pass(
-            &mut encoder,
-            &self.pipelines.interpolation,
-            &texture.bind_group,
-            &groups[0].1,
-            true,
-        );
-
-        if self.image_display.cross_correlation {
-            // Apply kernel to interpolated image
-            // self.render_pass(
-            //     &mut encoder,
-            //     &self.pipelines.kernel,
-            //     &interpolation_bind_group,
-            //     &kernelled_view,
-            //     false,
-            // );
+        RenderGroup {
+            texture: tex,
+            view,
+            bind_group,
         }
-
-        // Gamma correct the interpolated image
-        self.render_pass(
-            &mut encoder,
-            &self.pipelines.kernel,
-            &groups[0].2,
-            &groups[1].1,
-            false,
-        );
-        groups.reverse();
-
-        // Render the modified tex to screenspace
-        self.render_pass(
-            &mut encoder,
-            &self.pipelines.output,
-            &groups[0].2,
-            &view,
-            true,
-        );
-
-        // Render UI
-        self.render_egui(&mut encoder, &view, window);
-
-        self.queue.submit(iter::once(encoder.finish()));
-        output.present();
-
-        self.egui.last_frame = Instant::now();
-
-        Ok(())
     }
 
     pub fn render_pass(

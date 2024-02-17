@@ -6,7 +6,7 @@ pub struct Pipelines {
     pub layout: wgpu::PipelineLayout,
     pub interpolation: wgpu::RenderPipeline,
     pub kernel: wgpu::RenderPipeline,
-    // pub reduction: wgpu::RenderPipeline,
+    pub reduction: wgpu::RenderPipeline,
     pub normalize: wgpu::RenderPipeline,
     pub gamma: wgpu::RenderPipeline,
     pub output: wgpu::RenderPipeline,
@@ -20,6 +20,7 @@ impl Pipelines {
     ) -> Self {
         let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl");
         let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl");
+        let s_reduction = Pipelines::load_shader(device, "./src/shader/reduction.wgsl");
         let s_normalize = Pipelines::load_shader(device, "./src/shader/normalize.wgsl");
         let s_gamma = Pipelines::load_shader(device, "./src/shader/gamma_correction.wgsl");
         let s_output = Pipelines::load_shader(device, "./src/shader/output.wgsl");
@@ -28,6 +29,7 @@ impl Pipelines {
 
         let interpolation = Pipelines::create_pipeline(device, config, s_interpolation, &layout);
         let kernel = Pipelines::create_pipeline(device, config, s_kernel, &layout);
+        let reduction = Pipelines::create_pipeline(device, config, s_reduction, &layout);
         let normalize = Pipelines::create_pipeline(device, config, s_normalize, &layout);
         let gamma = Pipelines::create_pipeline(device, config, s_gamma, &layout);
         let output = Pipelines::create_pipeline(device, config, s_output, &layout);
@@ -36,6 +38,7 @@ impl Pipelines {
             layout,
             interpolation,
             kernel,
+            reduction,
             normalize,
             gamma,
             output,

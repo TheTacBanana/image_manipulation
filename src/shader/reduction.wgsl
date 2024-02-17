@@ -43,19 +43,8 @@ fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 
-fn sample(pos : vec2<f32>) -> vec4<f32> {
-    let clamped = min(max(vec2<i32>(pos), vec2<i32>(0)), vec2<i32>(tex_size()));
-    let transformed = (vec2<f32>(clamped) + vec2<f32>(0.5)) / tex_size();
-    return textureSample(t_diffuse, s_diffuse, transformed);
-}
-
-fn normalize(colour: vec4<f32>) -> vec4<f32> {
-    let mini = image_display.global_min_max.x;
-    let maxi = image_display.global_min_max.y;
-    return (colour - mini) / (maxi - mini);
-}
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return normalize(sample(in.clip_position.xy));
+    let transformed = in.clip_position.xy * 2.0 / tex_size() - 0.5;
+    return textureSample(t_diffuse, s_diffuse, transformed);
 }

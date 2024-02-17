@@ -144,7 +144,7 @@ impl Default for RawImageDisplay {
             size: 1.,
             gamma: 1.,
             scaling_mode: 0,
-            global_min_max: [0.0, 1.0],
+            global_min_max: [0.0, 40.0],
             _pad: Default::default(),
         }
     }
