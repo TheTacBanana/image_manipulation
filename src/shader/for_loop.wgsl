@@ -43,20 +43,30 @@ fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 
-fn sample(point : vec2<f32>) -> vec2<f32> {
-    return textureSample(t_diffuse, s_diffuse, point + vec2<f32>(0.5)).xy;
+fn sample(point : vec2<f32>) -> vec4<f32> {
+    return textureSample(t_diffuse, s_diffuse, (point + vec2<f32>(0.5)) / tex_size());
+}
+
+fn min_in_vec(colour : vec3<f32>) -> f32 {
+    return min(colour.x, min(colour.y, colour.z));
+}
+
+fn max_in_vec(colour : vec3<f32>) -> f32 {
+    return max(colour.x, max(colour.y, colour.z));
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let point = in.clip_position.xy * 2.0;
-    let top_left =     sample((point)                       / tex_size());
-    let top_right =    sample((point + vec2<f32>(1.0, 0.0)) / tex_size());
-    let bottom_left =  sample((point + vec2<f32>(0.0, 1.0)) / tex_size());
-    let bottom_right = sample((point + vec2<f32>(1.0, 1.0)) / tex_size());
+    var mini = 1.0;
+    var maxi = 0.0;
 
-    let mini = min(min(top_left.x, top_right.x), min(bottom_left.x, bottom_right.x));
-    let maxi = max(max(top_left.y, top_right.y), max(bottom_left.y, bottom_right.y));
-
+    let size = tex_size();
+    for (var row = 0; row < i32(size.y); row += 1) {
+        for (var col = -2; col < i32(size.x); col += 1) {
+            let s = sample(vec2<f32>(f32(col), f32(row))).xyz;
+            mini = min(mini, min_in_vec(s));
+            maxi = max(maxi, max_in_vec(s));
+        }
+    }
     return vec4<f32>(mini, maxi, 0.0, 1.0);
 }

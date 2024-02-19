@@ -11,6 +11,7 @@ pub struct Pipelines {
     // pub layout: wgpu::PipelineLayout,
     pub interpolation: wgpu::RenderPipeline,
     pub kernel: wgpu::RenderPipeline,
+    pub for_loop: wgpu::RenderPipeline,
     pub pad: wgpu::RenderPipeline,
     pub reduction: wgpu::RenderPipeline,
     pub normalize: wgpu::RenderPipeline,
@@ -36,6 +37,7 @@ impl Pipelines {
 
         let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl");
         let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl");
+        let s_for_loop = Pipelines::load_shader(device, "./src/shader/for_loop.wgsl");
         let s_pad = Pipelines::load_shader(device, "./src/shader/pad.wgsl");
         let s_reduction = Pipelines::load_shader(device, "./src/shader/reduction.wgsl");
         let s_normalize = Pipelines::load_shader(device, "./src/shader/normalize.wgsl");
@@ -82,6 +84,13 @@ impl Pipelines {
             wgpu::TextureFormat::Rgba32Float,
             "kernel",
         );
+        let for_loop = Pipelines::create_pipeline(
+            device,
+            s_for_loop,
+            &normal_layout,
+            wgpu::TextureFormat::Rgba32Float,
+            "for_loop",
+        );
         let pad = Pipelines::create_pipeline(
             device,
             s_pad,
@@ -122,6 +131,7 @@ impl Pipelines {
             bind_group_layouts: layouts,
             interpolation,
             kernel,
+            for_loop,
             pad,
             reduction,
             normalize,

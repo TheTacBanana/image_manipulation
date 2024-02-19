@@ -53,7 +53,7 @@ fn max_in_vec(colour : vec3<f32>) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let point = in.clip_position.xy / tex_size();
+    let point = (in.clip_position.xy + vec2<f32>(0.5)) / tex_size();
     let sample = textureSample(t_diffuse, s_diffuse, point);
 
     let min = min_in_vec(sample.xyz);

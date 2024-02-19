@@ -266,39 +266,42 @@ impl GraphicsContext {
             );
             render_groups.reverse();
 
-            let size = u32::max(
-                texture_dims.0.next_power_of_two(),
-                texture_dims.1.next_power_of_two(),
-            );
-            let padded = self.create_render_group((size, size), wgpu::TextureFormat::Rgba32Float);
+            let min_max = self.create_render_group((1, 1), wgpu::TextureFormat::Rgba32Float);
 
-            // Pad the image to a power of 2
             self.render_pass(
                 &mut encoder,
-                &self.pipelines.pad,
+                &self.pipelines.for_loop,
                 &render_groups[0].bind_group,
-                &padded.view,
+                &min_max.view,
                 false,
             );
 
-            // Create increasingly smaller buffers to reduce into until a size of (1, 1)
-            let mut reductions = vec![padded];
-            (0..size.ilog2()).rev().for_each(|i| {
-                let m = 2u32.pow(i);
-                let dims = (m, m);
-                reductions.push(self.create_render_group(dims, wgpu::TextureFormat::Rgba32Float));
-            });
+            // render_groups[0] = padded;
+            // render_groups[1] = padded2;
 
-            // Render the reductions
-            reductions.windows(2).for_each(|r| {
-                self.render_pass(
-                    &mut encoder,
-                    &self.pipelines.reduction,
-                    &r[0].bind_group,
-                    &r[1].view,
-                    false,
-                )
-            });
+
+            // Create increasingly smaller buffers to reduce into until a size of (1, 1)
+            // let mut reductions = vec![padded];
+            // (0..size.ilog2()).rev().for_each(|i| {
+            //     let m = 2u32.pow(i);
+            //     let dims = (m, m);
+            //     reductions.push(self.create_render_group(dims, wgpu::TextureFormat::Rgba32Float));
+            // });
+
+            // // Render the reductions
+            // reductions.windows(2).for_each(|r| {
+            //     self.render_pass(
+            //         &mut encoder,
+            //         &self.pipelines.reduction,
+            //         &r[0].bind_group,
+            //         &r[1].view,
+            //         false,
+            //     )
+            // });
+
+            // render_groups[0] = reductions.pop().unwrap();
+            // let s = render_groups[0].texture.size();
+            // render_groups[1] = self.create_render_group((s.width, s.height), wgpu::TextureFormat::Rgba32Float);
 
             // println!("{:?}", reductions.last().unwrap().texture.size());
             {
@@ -321,7 +324,7 @@ impl GraphicsContext {
                 render_pass.set_bind_group(0, &render_groups[0].bind_group, &[]);
                 render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
                 render_pass.set_bind_group(2, &self.array_bind_group, &[]);
-                render_pass.set_bind_group(3, &reductions.last().unwrap().bind_group, &[]);
+                render_pass.set_bind_group(3, &min_max.bind_group, &[]);
                 render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
                 render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);

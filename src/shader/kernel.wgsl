@@ -40,15 +40,19 @@ fn vs_main(
 // Fragment shader
 
 fn apply_kernel(pos: vec2<f32>) -> vec4<f32> {
-    var sum = vec3<f32>(0.0);
+    var s = vec3<f32>(0.0);
     for (var row = -2; row < 3; row += 1) {
         for (var col = -2; col < 3; col += 1) {
             let i = (row + 2) * 5 + (col + 2);
             let sample_pos = pos + vec2<f32>(f32(row), f32(col));
-            sum += sample(sample_pos).xyz * f32(laplacian[i]);
+            s += sample(sample_pos).xyz * f32(laplacian[i]);
         }
     }
-    return vec4<f32>(sum, 1.0);
+    return vec4<f32>(norm(s.x), norm(s.y), norm(s.z), 1.0);
+}
+
+fn norm(in: f32) -> f32 {
+    return max(0.0, min(1.0, (in / 256.0) + 0.5));
 }
 
 fn tex_size() -> vec2<f32> {
@@ -63,5 +67,7 @@ fn sample(pos : vec2<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // return (sample(in.clip_position.xy) / 512.0) + 0.5;
+    // return (apply_kernel(in.clip_position.xy) / 512.0) + 0.5;
     return apply_kernel(in.clip_position.xy);
 }

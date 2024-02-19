@@ -56,12 +56,22 @@ fn sample(pos : vec2<f32>) -> vec4<f32> {
 
 fn normalize(colour: vec4<f32>) -> vec4<f32> {
     let mini_maxi = textureSample(mini_max_diffuse, mini_max_sampler, vec2<f32>(0.5));
-    let mini = mini_maxi.x;
-    let maxi = mini_maxi.y;
+    let mini = unnorm(mini_maxi.x);
+    let maxi = unnorm(mini_maxi.y);
+
     return vec4<f32>((colour.xyz - mini) / (maxi - mini), 1.0);
+}
+
+fn unnorm(in: f32) -> f32 {
+    return (in - 0.5) * 256.0;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return normalize(sample(in.clip_position.xy));
+    // let s = (sample(in.clip_position.xy) - 0.5) * 1024.0;
+    // let s = (sample(in.clip_position.xy) - 0.5) * 512.0;
+    let s = sample(in.clip_position.xy);
+    let normed = vec4<f32>(unnorm(s.x), unnorm(s.y), unnorm(s.z), 1.0);
+    return normalize(normed);
+    // return s;
 }
