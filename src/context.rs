@@ -266,7 +266,7 @@ impl GraphicsContext {
             );
             render_groups.reverse();
 
-            let min_max = self.create_render_group((1, 1), wgpu::TextureFormat::Rgba32Float);
+            let min_max = self.create_render_group((8, 8), wgpu::TextureFormat::Rgba32Float);
 
             self.render_pass(
                 &mut encoder,
@@ -275,10 +275,6 @@ impl GraphicsContext {
                 &min_max.view,
                 false,
             );
-
-            // render_groups[0] = padded;
-            // render_groups[1] = padded2;
-
 
             // Create increasingly smaller buffers to reduce into until a size of (1, 1)
             // let mut reductions = vec![padded];

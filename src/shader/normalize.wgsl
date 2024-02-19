@@ -54,12 +54,25 @@ fn sample(pos : vec2<f32>) -> vec4<f32> {
     return textureSample(t_diffuse, s_diffuse, transformed);
 }
 
-fn normalize(colour: vec4<f32>) -> vec4<f32> {
-    let mini_maxi = textureSample(mini_max_diffuse, mini_max_sampler, vec2<f32>(0.5));
-    let mini = unnorm(mini_maxi.x);
-    let maxi = unnorm(mini_maxi.y);
+fn min_and_max() -> vec2<f32> {
+    var mini = 1.0;
+    var maxi = 0.0;
 
-    return vec4<f32>((colour.xyz - mini) / (maxi - mini), 1.0);
+    let size = textureDimensions(mini_max_diffuse);
+    for (var row = 0; row < 2; row += 1) {
+        for (var col = 0; col < 2; col += 1) {
+            let point = vec2<f32>(f32(col), f32(row)) + vec2<f32>(0.5);
+            let s = textureSample(mini_max_diffuse, mini_max_sampler, point / vec2<f32>(2.0)).xyz;
+            mini = min(mini, s.x);
+            maxi = max(maxi, s.y);
+        }
+    }
+    return vec2<f32>(unnorm(mini), unnorm(maxi));
+}
+
+fn normalize(colour: vec4<f32>) -> vec4<f32> {
+    let min_maxi = min_and_max();
+    return vec4<f32>((colour.xyz - min_maxi.x) / (min_maxi.y - min_maxi.x), 1.0);
 }
 
 fn unnorm(in: f32) -> f32 {
@@ -68,10 +81,7 @@ fn unnorm(in: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // let s = (sample(in.clip_position.xy) - 0.5) * 1024.0;
-    // let s = (sample(in.clip_position.xy) - 0.5) * 512.0;
     let s = sample(in.clip_position.xy);
     let normed = vec4<f32>(unnorm(s.x), unnorm(s.y), unnorm(s.z), 1.0);
     return normalize(normed);
-    // return s;
 }
