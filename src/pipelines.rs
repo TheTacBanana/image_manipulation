@@ -1,9 +1,14 @@
 use pollster::FutureExt;
 
-use crate::{texture::load_bytes, vertex::Vertex};
+use crate::{
+    texture::{load_bytes, Texture},
+    vertex::Vertex,
+};
 
 pub struct Pipelines {
-    pub layout: wgpu::PipelineLayout,
+    pub bind_group_layouts: TextureBindGroupLayouts,
+
+    // pub layout: wgpu::PipelineLayout,
     pub interpolation: wgpu::RenderPipeline,
     pub kernel: wgpu::RenderPipeline,
     pub pad: wgpu::RenderPipeline,
@@ -13,12 +18,22 @@ pub struct Pipelines {
     pub output: wgpu::RenderPipeline,
 }
 
+pub struct TextureBindGroupLayouts {
+    pub bgra8unormsrgb: wgpu::BindGroupLayout,
+    pub rgba32float: wgpu::BindGroupLayout,
+}
+
 impl Pipelines {
     pub fn new(
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-        bind_groups: &[&wgpu::BindGroupLayout],
+        image_display_layout: &wgpu::BindGroupLayout,
+        kernel_array_layout: &wgpu::BindGroupLayout,
     ) -> Self {
+        let layouts = TextureBindGroupLayouts {
+            bgra8unormsrgb: Texture::create_bind_group_layout(device),
+            rgba32float: Texture::create_non_filter_bind_group_layout(device),
+        };
+
         let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl");
         let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl");
         let s_pad = Pipelines::load_shader(device, "./src/shader/pad.wgsl");
@@ -27,21 +42,84 @@ impl Pipelines {
         let s_gamma = Pipelines::load_shader(device, "./src/shader/gamma_correction.wgsl");
         let s_output = Pipelines::load_shader(device, "./src/shader/output.wgsl");
 
-        let layout = Pipelines::create_pipeline_layout(device, bind_groups);
+        let interpolation_layout = Pipelines::create_pipeline_layout(
+            device,
+            &[
+                &layouts.bgra8unormsrgb,
+                image_display_layout,
+                kernel_array_layout,
+            ],
+        );
+        let normal_layout = Pipelines::create_pipeline_layout(
+            device,
+            &[
+                &layouts.rgba32float,
+                image_display_layout,
+                kernel_array_layout,
+            ],
+        );
+        let normalisation_layout = Pipelines::create_pipeline_layout(
+            device,
+            &[
+                &layouts.rgba32float,
+                image_display_layout,
+                kernel_array_layout,
+                &layouts.rgba32float,
+            ],
+        );
 
-        let normalize_bindings = [bind_groups[0], bind_groups[1], bind_groups[2], bind_groups[0]];
-        let normalize_layout = Pipelines::create_pipeline_layout(device, &normalize_bindings);
-
-        let interpolation = Pipelines::create_pipeline(device, config, s_interpolation, &layout);
-        let kernel = Pipelines::create_pipeline(device, config, s_kernel, &layout);
-        let pad = Pipelines::create_pipeline(device, config, s_pad, &layout);
-        let reduction = Pipelines::create_pipeline(device, config, s_reduction, &layout);
-        let normalize = Pipelines::create_pipeline(device, config, s_normalize, &normalize_layout);
-        let gamma = Pipelines::create_pipeline(device, config, s_gamma, &layout);
-        let output = Pipelines::create_pipeline(device, config, s_output, &layout);
+        let interpolation = Pipelines::create_pipeline(
+            device,
+            s_interpolation,
+            &interpolation_layout,
+            wgpu::TextureFormat::Rgba32Float,
+            "interpolation",
+        );
+        let kernel = Pipelines::create_pipeline(
+            device,
+            s_kernel,
+            &normal_layout,
+            wgpu::TextureFormat::Rgba32Float,
+            "kernel",
+        );
+        let pad = Pipelines::create_pipeline(
+            device,
+            s_pad,
+            &normal_layout,
+            wgpu::TextureFormat::Rgba32Float,
+            "pad",
+        );
+        let reduction = Pipelines::create_pipeline(
+            device,
+            s_reduction,
+            &normal_layout,
+            wgpu::TextureFormat::Rgba32Float,
+            "reduction",
+        );
+        let normalize = Pipelines::create_pipeline(
+            device,
+            s_normalize,
+            &normalisation_layout,
+            wgpu::TextureFormat::Rgba32Float,
+            "normalize",
+        );
+        let gamma = Pipelines::create_pipeline(
+            device,
+            s_gamma,
+            &normal_layout,
+            wgpu::TextureFormat::Rgba32Float,
+            "gamma",
+        );
+        let output = Pipelines::create_pipeline(
+            device,
+            s_output,
+            &normal_layout,
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+            "output",
+        );
 
         Pipelines {
-            layout,
+            bind_group_layouts: layouts,
             interpolation,
             kernel,
             pad,
@@ -74,12 +152,13 @@ impl Pipelines {
 
     fn create_pipeline(
         device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
         shader: wgpu::ShaderModule,
         layout: &wgpu::PipelineLayout,
+        target_format: wgpu::TextureFormat,
+        label: &str,
     ) -> wgpu::RenderPipeline {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
+            label: Some(label),
             layout: Some(layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -90,11 +169,15 @@ impl Pipelines {
                 module: &shader,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent::REPLACE,
-                        alpha: wgpu::BlendComponent::REPLACE,
-                    }),
+                    format: target_format,
+                    blend: match target_format {
+                        wgpu::TextureFormat::Bgra8UnormSrgb => Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent::REPLACE,
+                            alpha: wgpu::BlendComponent::REPLACE,
+                        }),
+                        wgpu::TextureFormat::Rgba32Float => None,
+                        _ => panic!(),
+                    },
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),

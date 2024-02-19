@@ -84,7 +84,7 @@ impl Texture {
         );
 
         let bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &context.texture_layout,
+                layout: &context.pipelines.bind_group_layouts.bgra8unormsrgb,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
@@ -122,6 +122,30 @@ impl Texture {
                 },
             ],
             label: Some("texture_bind_group_layout"),
+        })
+    }
+
+    pub fn create_non_filter_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                    count: None,
+                },
+            ],
+            label: Some("non_filter_texture_bind_group_layout"),
         })
     }
 
