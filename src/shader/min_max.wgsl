@@ -60,11 +60,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var mini = 1.0;
     var maxi = 0.0;
 
-    let size = vec2<i32>(tex_size() / vec2<f32>(2.0));
+    let size = vec2<i32>(tex_size() / vec2<f32>(8.0));
     let multiplied = size * vec2<i32>(in.clip_position.xy);
 
     for (var row = multiplied.y; row < i32(multiplied.y + size.y); row += 1) {
-        for (var col = multiplied.y; col < i32(multiplied.y + size.y); col += 1) {
+        for (var col = multiplied.x; col < i32(multiplied.x + size.x); col += 1) {
             let s = sample(vec2<f32>(f32(col), f32(row))).xyz;
             mini = min(mini, min_in_vec(s));
             maxi = max(maxi, max_in_vec(s));

@@ -59,10 +59,10 @@ fn min_and_max() -> vec2<f32> {
     var maxi = 0.0;
 
     let size = textureDimensions(mini_max_diffuse);
-    for (var row = 0; row < 2; row += 1) {
-        for (var col = 0; col < 2; col += 1) {
+    for (var row = 0; row < i32(size.y); row += 1) {
+        for (var col = 0; col < i32(size.x); col += 1) {
             let point = vec2<f32>(f32(col), f32(row)) + vec2<f32>(0.5);
-            let s = textureSample(mini_max_diffuse, mini_max_sampler, point / vec2<f32>(2.0)).xyz;
+            let s = textureSample(mini_max_diffuse, mini_max_sampler, point / vec2<f32>(size)).xyz;
             mini = min(mini, s.x);
             maxi = max(maxi, s.y);
         }

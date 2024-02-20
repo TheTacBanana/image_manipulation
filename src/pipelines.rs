@@ -8,12 +8,9 @@ use crate::{
 pub struct Pipelines {
     pub bind_group_layouts: TextureBindGroupLayouts,
 
-    // pub layout: wgpu::PipelineLayout,
     pub interpolation: wgpu::RenderPipeline,
     pub kernel: wgpu::RenderPipeline,
-    pub for_loop: wgpu::RenderPipeline,
-    pub pad: wgpu::RenderPipeline,
-    pub reduction: wgpu::RenderPipeline,
+    pub min_max: wgpu::RenderPipeline,
     pub normalize: wgpu::RenderPipeline,
     pub gamma: wgpu::RenderPipeline,
     pub output: wgpu::RenderPipeline,
@@ -37,9 +34,7 @@ impl Pipelines {
 
         let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl");
         let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl");
-        let s_for_loop = Pipelines::load_shader(device, "./src/shader/for_loop.wgsl");
-        let s_pad = Pipelines::load_shader(device, "./src/shader/pad.wgsl");
-        let s_reduction = Pipelines::load_shader(device, "./src/shader/reduction.wgsl");
+        let s_for_loop = Pipelines::load_shader(device, "./src/shader/min_max.wgsl");
         let s_normalize = Pipelines::load_shader(device, "./src/shader/normalize.wgsl");
         let s_gamma = Pipelines::load_shader(device, "./src/shader/gamma_correction.wgsl");
         let s_output = Pipelines::load_shader(device, "./src/shader/output.wgsl");
@@ -91,20 +86,6 @@ impl Pipelines {
             wgpu::TextureFormat::Rgba32Float,
             "for_loop",
         );
-        let pad = Pipelines::create_pipeline(
-            device,
-            s_pad,
-            &normal_layout,
-            wgpu::TextureFormat::Rgba32Float,
-            "pad",
-        );
-        let reduction = Pipelines::create_pipeline(
-            device,
-            s_reduction,
-            &normal_layout,
-            wgpu::TextureFormat::Rgba32Float,
-            "reduction",
-        );
         let normalize = Pipelines::create_pipeline(
             device,
             s_normalize,
@@ -131,9 +112,7 @@ impl Pipelines {
             bind_group_layouts: layouts,
             interpolation,
             kernel,
-            for_loop,
-            pad,
-            reduction,
+            min_max: for_loop,
             normalize,
             gamma,
             output,

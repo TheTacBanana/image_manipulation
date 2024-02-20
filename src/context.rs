@@ -1,7 +1,7 @@
 use std::{default, iter, mem};
 
 use cgmath::InnerSpace;
-use egui::{Checkbox, ComboBox, Slider};
+use egui::{epaint::text, Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use futures::SinkExt;
@@ -9,9 +9,10 @@ use instant::Instant;
 use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
-    image_display::{ImageDisplay, ScalingMode},
+    image_display::{ImageDisplay, ImageDisplayWithBuffers, ScalingMode},
     input::{CursorEvent, InputContext},
     pipelines::Pipelines,
+    stages::RenderStages,
     texture::Texture,
     thread_context::ThreadContext,
     vertex::Vertex,
@@ -25,9 +26,10 @@ pub struct GraphicsContext {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub pipelines: Pipelines,
+    pub stages: RenderStages,
     pub buffers: (wgpu::Buffer, wgpu::Buffer),
     pub texture_sampler: wgpu::Sampler,
-    pub image_display: ImageDisplay,
+    pub image_display: ImageDisplayWithBuffers,
     pub egui: EguiContext,
     pub input: InputContext,
     pub thread: ThreadContext,
@@ -39,12 +41,6 @@ pub struct EguiContext {
     pub platform: Platform,
     pub render_pass: RenderPass,
     pub last_frame: Instant,
-}
-
-pub struct RenderGroup {
-    texture: wgpu::Texture,
-    view: wgpu::TextureView,
-    bind_group: wgpu::BindGroup,
 }
 
 impl GraphicsContext {
@@ -126,7 +122,7 @@ impl GraphicsContext {
             last_frame: Instant::now(),
         };
 
-        let image_display = ImageDisplay::from_window(&device, &window.raw);
+        let image_display = ImageDisplayWithBuffers::from_window(&device, &window.raw);
 
         let texture_sampler = Texture::create_sampler(&device);
 
@@ -134,6 +130,8 @@ impl GraphicsContext {
             GraphicsContext::create_array_bindings(&device);
 
         let pipelines = Pipelines::new(&device, &image_display.layout, &array_layout);
+
+        let stages = RenderStages::new();
 
         let buffers = Self::create_buffers(&device);
 
@@ -143,6 +141,7 @@ impl GraphicsContext {
             queue,
             config,
             pipelines,
+            stages,
             buffers,
             texture_sampler,
             image_display,
@@ -214,8 +213,16 @@ impl GraphicsContext {
             self.config.width = width;
             self.config.height = height;
             self.surface.configure(&self.device, &self.config);
-            self.image_display.window_size = [width as f32, height as f32];
+            self.image_display.internal.window_size = [width as f32, height as f32];
         }
+    }
+
+    pub fn image_display(&self) -> &ImageDisplay {
+        &self.image_display.internal
+    }
+
+    pub fn image_display_mut(&mut self) -> &mut ImageDisplay {
+        &mut self.image_display.internal
     }
 
     pub fn render(
@@ -234,109 +241,85 @@ impl GraphicsContext {
         let texture_dims = (
             u32::max(
                 1,
-                (texture.texture.width() as f32 * self.image_display.size).floor() as u32,
+                (texture.texture.width() as f32 * self.image_display().size).floor() as u32,
             ),
             u32::max(
                 1,
-                (texture.texture.height() as f32 * self.image_display.size).floor() as u32,
+                (texture.texture.height() as f32 * self.image_display().size).floor() as u32,
             ),
         );
 
-        let mut render_groups = (0..2)
-            .map(|_| self.create_render_group(texture_dims, wgpu::TextureFormat::Rgba32Float))
-            .collect::<Vec<_>>();
+        if self.image_display.changed {
+            let mut stages = mem::take(&mut self.stages);
+            stages.update_resolution(&self, texture_dims);
+            self.stages = stages;
 
-        // Interpolate image
-        self.render_pass(
-            &mut encoder,
-            &self.pipelines.interpolation,
-            &texture.bind_group,
-            &render_groups[0].view,
-            true,
-        );
-
-        if self.image_display.cross_correlation {
-            // Apply kernel to interpolated image
+            // Interpolate image
             self.render_pass(
                 &mut encoder,
-                &self.pipelines.kernel,
-                &render_groups[0].bind_group,
-                &render_groups[1].view,
-                false,
-            );
-            render_groups.reverse();
-
-            let min_max = self.create_render_group((8, 8), wgpu::TextureFormat::Rgba32Float);
-
-            self.render_pass(
-                &mut encoder,
-                &self.pipelines.for_loop,
-                &render_groups[0].bind_group,
-                &min_max.view,
+                &self.pipelines.interpolation,
+                &texture.bind_group,
+                &self.stages.interpolation().view,
                 false,
             );
 
-            // Create increasingly smaller buffers to reduce into until a size of (1, 1)
-            // let mut reductions = vec![padded];
-            // (0..size.ilog2()).rev().for_each(|i| {
-            //     let m = 2u32.pow(i);
-            //     let dims = (m, m);
-            //     reductions.push(self.create_render_group(dims, wgpu::TextureFormat::Rgba32Float));
-            // });
+            if self.image_display().cross_correlation {
+                // Apply kernel to interpolated image
+                self.render_pass(
+                    &mut encoder,
+                    &self.pipelines.kernel,
+                    &self.stages.interpolation().bind_group,
+                    &self.stages.kerneled().view,
+                    false,
+                );
 
-            // // Render the reductions
-            // reductions.windows(2).for_each(|r| {
-            //     self.render_pass(
-            //         &mut encoder,
-            //         &self.pipelines.reduction,
-            //         &r[0].bind_group,
-            //         &r[1].view,
-            //         false,
-            //     )
-            // });
+                self.render_pass(
+                    &mut encoder,
+                    &self.pipelines.min_max,
+                    &self.stages.kerneled().bind_group,
+                    &self.stages.min_max().view,
+                    false,
+                );
 
-            // render_groups[0] = reductions.pop().unwrap();
-            // let s = render_groups[0].texture.size();
-            // render_groups[1] = self.create_render_group((s.width, s.height), wgpu::TextureFormat::Rgba32Float);
+                {
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Render Pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &self.stages.interpolation().view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        occlusion_query_set: None,
+                        timestamp_writes: None,
+                    });
 
-            // println!("{:?}", reductions.last().unwrap().texture.size());
-            {
-                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Render Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &render_groups[1].view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    occlusion_query_set: None,
-                    timestamp_writes: None,
-                });
+                    render_pass.set_pipeline(&self.pipelines.normalize);
+                    render_pass.set_bind_group(0, &self.stages.kerneled().bind_group, &[]);
+                    render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
+                    render_pass.set_bind_group(2, &self.array_bind_group, &[]);
+                    render_pass.set_bind_group(3, &self.stages.min_max().bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
+                    render_pass
+                        .set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
+                    render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
+                }
 
-                render_pass.set_pipeline(&self.pipelines.normalize);
-                render_pass.set_bind_group(0, &render_groups[0].bind_group, &[]);
-                render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-                render_pass.set_bind_group(2, &self.array_bind_group, &[]);
-                render_pass.set_bind_group(3, &min_max.bind_group, &[]);
-                render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
-                render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
+                self.image_display.clear_changed();
             }
-            render_groups.reverse()
-        }
 
-        // Gamma correct the interpolated image
-        self.render_pass(
-            &mut encoder,
-            &self.pipelines.gamma,
-            &render_groups[0].bind_group,
-            &render_groups[1].view,
-            false,
-        );
-        render_groups.reverse();
+            // Gamma correct the interpolated image
+            self.render_pass(
+                &mut encoder,
+                &self.pipelines.gamma,
+                &self.stages.interpolation().bind_group,
+                &self.stages.output_staging().view,
+                false,
+            );
+        }
 
         // Get current screen texture
         let output = self.surface.get_current_texture()?;
@@ -348,7 +331,7 @@ impl GraphicsContext {
         self.render_pass(
             &mut encoder,
             &self.pipelines.output,
-            &render_groups[0].bind_group,
+            &self.stages.output_staging().bind_group,
             &view,
             true,
         );
@@ -363,61 +346,6 @@ impl GraphicsContext {
         self.egui.last_frame = Instant::now();
 
         Ok(())
-    }
-
-    pub fn create_render_group(
-        &self,
-        dims: (u32, u32),
-        format: wgpu::TextureFormat,
-    ) -> RenderGroup {
-        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size: wgpu::Extent3d {
-                width: dims.0,
-                height: dims.1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
-        let view = tex.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(format),
-            ..Default::default()
-        });
-
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: match format {
-                wgpu::TextureFormat::Rgba32Float => &self.pipelines.bind_group_layouts.rgba32float,
-                wgpu::TextureFormat::Bgra8UnormSrgb => {
-                    &self.pipelines.bind_group_layouts.bgra8unormsrgb
-                }
-                _ => panic!(),
-            },
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
-                },
-            ],
-            label: None,
-        });
-        RenderGroup {
-            texture: tex,
-            view,
-            bind_group,
-        }
     }
 
     pub fn render_pass(
@@ -437,10 +365,10 @@ impl GraphicsContext {
                     load: {
                         match clear {
                             true => wgpu::LoadOp::Clear(wgpu::Color {
-                                r: self.image_display.background_colour[0] as f64,
-                                g: self.image_display.background_colour[1] as f64,
-                                b: self.image_display.background_colour[2] as f64,
-                                a: self.image_display.background_colour[3] as f64,
+                                r: self.image_display().background_colour[0] as f64,
+                                g: self.image_display().background_colour[1] as f64,
+                                b: self.image_display().background_colour[2] as f64,
+                                a: self.image_display().background_colour[3] as f64,
                             }),
                             false => wgpu::LoadOp::Load,
                         }
@@ -474,6 +402,8 @@ impl GraphicsContext {
 
         self.egui.platform.begin_frame();
 
+        let cloned = self.image_display().clone();
+
         let ctx = &self.egui.platform.context();
 
         egui::Window::new("Image Settings")
@@ -497,52 +427,55 @@ impl GraphicsContext {
                 }
 
                 {
-                    let mut x_pos = self.image_display.pos[0].to_string();
-                    let mut y_pos = self.image_display.pos[1].to_string();
+                    let mut x_pos = self.image_display().pos[0].to_string();
+                    let mut y_pos = self.image_display().pos[1].to_string();
 
                     ui.add(egui::TextEdit::singleline(&mut x_pos));
                     ui.add(egui::TextEdit::singleline(&mut y_pos));
 
                     if let Ok(x_pos) = x_pos.parse::<f32>() {
-                        self.image_display.pos[0] = x_pos;
+                        self.image_display_mut().pos[0] = x_pos;
                     }
                     if let Ok(y_pos) = y_pos.parse::<f32>() {
-                        self.image_display.pos[1] = y_pos;
+                        self.image_display_mut().pos[1] = y_pos;
                     }
                 }
 
                 ui.add(
-                    Slider::new(&mut self.image_display.gamma, 0.0..=5.0).text("Gamma Correction"),
+                    Slider::new(&mut self.image_display_mut().gamma, 0.0..=5.0)
+                        .text("Gamma Correction"),
                 );
 
-                ui.add(Slider::new(&mut self.image_display.size, 0.0..=10.0).text("Image Size"));
+                ui.add(
+                    Slider::new(&mut self.image_display_mut().size, 0.0..=10.0).text("Image Size"),
+                );
 
                 ComboBox::from_label("")
-                    .selected_text(format!("{:?}", &mut self.image_display.scaling_mode))
+                    .selected_text(format!("{:?}", &mut self.image_display_mut().scaling_mode))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(
-                            &mut self.image_display.scaling_mode,
+                            &mut self.image_display_mut().scaling_mode,
                             ScalingMode::NearestNeighbour,
                             "Nearest Neighbour",
                         );
                         ui.selectable_value(
-                            &mut self.image_display.scaling_mode,
+                            &mut self.image_display_mut().scaling_mode,
                             ScalingMode::Bilinear,
                             "Bi-Linear",
                         );
                     });
 
                 ui.add(Checkbox::new(
-                    &mut self.image_display.cross_correlation,
+                    &mut self.image_display_mut().cross_correlation,
                     "Cross Correlation",
                 ));
 
                 if ui.button("Reset Default").clicked() {
-                    self.image_display.reset_default();
+                    self.image_display_mut().reset_default();
                 }
 
                 {
-                    let colour = &mut self.image_display.background_colour;
+                    let colour = &mut self.image_display_mut().background_colour;
                     let mut rgb = [colour[0], colour[1], colour[2]];
                     egui::color_picker::color_edit_button_rgb(ui, &mut rgb);
                     colour[0] = rgb[0];
@@ -552,6 +485,10 @@ impl GraphicsContext {
 
                 self.input.mouse_over_ui = ui.ui_contains_pointer();
             });
+
+        if *self.image_display() != cloned {
+            self.image_display.set_changed()
+        }
 
         let full_output = self.egui.platform.end_frame(Some(window));
         let paint_jobs = self.egui.platform.context().tessellate(full_output.shapes);
@@ -596,8 +533,8 @@ impl GraphicsContext {
                 if !input.mouse_over_ui {
                     match input.touch_count() {
                         1 => {
-                            self.image_display.pos[0] += delta.x;
-                            self.image_display.pos[1] += delta.y;
+                            self.image_display_mut().pos[0] += delta.x;
+                            self.image_display_mut().pos[1] += delta.y;
                         }
                         2 => {
                             let ts = input.active_touches();
@@ -607,8 +544,9 @@ impl GraphicsContext {
                             let m1 = between.magnitude();
                             let m2 = (between + delta).magnitude();
 
-                            self.image_display.size -= (m2 / m1) - 1.0;
-                            self.image_display.size = f32::max(self.image_display.size, 0.001);
+                            self.image_display_mut().size -= (m2 / m1) - 1.0;
+                            self.image_display_mut().size =
+                                f32::max(self.image_display().size, 0.001);
                         }
                         _ => (),
                     }
@@ -623,15 +561,18 @@ impl GraphicsContext {
             }
             CursorEvent::Position(pos) => {
                 if input.mouse_pressed {
-                    self.image_display.pos[0] += pos.x - input.last_mouse_pos.x;
-                    self.image_display.pos[1] += pos.y - input.last_mouse_pos.y;
+                    self.image_display.internal.pos[0] += pos.x - input.last_mouse_pos.x;
+                    self.image_display.internal.pos[1] += pos.y - input.last_mouse_pos.y;
+                    self.image_display.set_changed()
                 }
                 input.last_mouse_pos = pos;
             }
             CursorEvent::Scroll(scroll) => {
-                self.image_display.size +=
-                    scroll * (self.image_display.size * self.image_display.size + 1.1).log10();
-                self.image_display.size = f32::min(f32::max(self.image_display.size, 0.001), 10.0);
+                self.image_display_mut().size +=
+                    scroll * (self.image_display().size * self.image_display().size + 1.1).log10();
+                self.image_display_mut().size =
+                    f32::min(f32::max(self.image_display().size, 0.001), 10.0);
+                self.image_display.set_changed()
             }
         }
     }

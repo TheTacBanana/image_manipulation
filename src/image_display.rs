@@ -3,6 +3,15 @@ use wgpu::util::DeviceExt;
 use crate::context::GraphicsContext;
 
 #[derive(Debug)]
+pub struct ImageDisplayWithBuffers {
+    pub internal: ImageDisplay,
+    pub changed: bool,
+    pub layout: wgpu::BindGroupLayout,
+    pub buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImageDisplay {
     pub window_size: [f32; 2],
     pub pos: [f32; 2],
@@ -11,13 +20,13 @@ pub struct ImageDisplay {
     pub scaling_mode: ScalingMode,
     pub cross_correlation: bool,
     pub background_colour: [f32; 4],
-    pub layout: wgpu::BindGroupLayout,
-    pub buffer: wgpu::Buffer,
-    pub bind_group: wgpu::BindGroup,
 }
 
-impl ImageDisplay {
-    pub fn from_window(device: &wgpu::Device, window: &winit::window::Window) -> Self {
+impl ImageDisplayWithBuffers {
+    pub fn from_window(
+        device: &wgpu::Device,
+        window: &winit::window::Window,
+    ) -> ImageDisplayWithBuffers {
         let mut raw_image_display = RawImageDisplay::default();
         raw_image_display.window_size = [
             window.inner_size().width as f32,
@@ -74,20 +83,43 @@ impl ImageDisplay {
             ..
         } = raw_image_display;
 
-        ImageDisplay {
-            window_size,
-            pos,
-            size,
-            gamma,
-            scaling_mode: ScalingMode::from_u32(scaling_mode),
-            cross_correlation: false,
+        ImageDisplayWithBuffers {
+            changed: true,
+            internal: ImageDisplay {
+                window_size,
+                pos,
+                size,
+                gamma,
+                scaling_mode: ScalingMode::from_u32(scaling_mode),
+                cross_correlation: false,
+                background_colour: [0.0, 0.0, 0.0, 1.0],
+            },
             layout,
             buffer,
             bind_group,
-            background_colour: [0.0, 0.0, 0.0, 1.0],
         }
     }
 
+    pub fn bind(&self, context: &GraphicsContext) {
+        if self.changed {
+            context.queue.write_buffer(
+                &self.buffer,
+                0,
+                bytemuck::bytes_of(&self.internal.into_raw()),
+            );
+        }
+    }
+
+    pub fn set_changed(&mut self) {
+        self.changed = true;
+    }
+
+    pub fn clear_changed(&mut self) {
+        self.changed = false;
+    }
+}
+
+impl ImageDisplay {
     pub fn into_raw(&self) -> RawImageDisplay {
         RawImageDisplay {
             window_size: self.window_size,
@@ -116,12 +148,6 @@ impl ImageDisplay {
         self.scaling_mode = ScalingMode::from_u32(scaling_mode);
         self.background_colour = [0.0, 0.0, 0.0, 1.0];
     }
-
-    pub fn bind(&self, context: &GraphicsContext) {
-        context
-            .queue
-            .write_buffer(&self.buffer, 0, bytemuck::bytes_of(&self.into_raw()));
-    }
 }
 
 #[repr(C)]
@@ -132,8 +158,7 @@ pub struct RawImageDisplay {
     pub size: f32,
     pub gamma: f32,
     pub scaling_mode: u32,
-    pub global_min_max: [f32; 2],
-    pub _pad: [f32; 5],
+    pub _pad: [f32; 7],
 }
 
 impl Default for RawImageDisplay {
@@ -144,7 +169,6 @@ impl Default for RawImageDisplay {
             size: 1.,
             gamma: 1.,
             scaling_mode: 0,
-            global_min_max: [0.0, 1.0],
             _pad: Default::default(),
         }
     }

@@ -1,4 +1,5 @@
 #![feature(async_closure)]
+#![feature(option_take_if)]
 
 use context::GraphicsContext;
 
@@ -24,6 +25,7 @@ pub mod texture;
 pub mod vertex;
 pub mod window;
 pub mod thread_context;
+pub mod stages;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn run() {
