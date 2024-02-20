@@ -123,17 +123,12 @@ impl GraphicsContext {
         };
 
         let image_display = ImageDisplayWithBuffers::from_window(&device, &window.raw);
-
         let texture_sampler = Texture::create_sampler(&device);
-
         let (array_layout, array_buffer, array_bind_group) =
             GraphicsContext::create_array_bindings(&device);
-
         let pipelines = Pipelines::new(&device, surface_format, &image_display.layout, &array_layout);
-
         let stages = RenderStages::new();
-
-        let buffers = Self::create_buffers(&device);
+        let buffers = GraphicsContext::create_buffers(&device);
 
         Self {
             surface,
@@ -259,7 +254,7 @@ impl GraphicsContext {
                 &mut encoder,
                 &self.pipelines.interpolation,
                 &texture.bind_group,
-                &self.stages.interpolation().view,
+                &self.stages.output_staging().view,
                 false,
             );
 
@@ -268,7 +263,7 @@ impl GraphicsContext {
                 self.render_pass(
                     &mut encoder,
                     &self.pipelines.kernel,
-                    &self.stages.interpolation().bind_group,
+                    &self.stages.output_staging().bind_group,
                     &self.stages.kerneled().view,
                     false,
                 );
@@ -285,7 +280,7 @@ impl GraphicsContext {
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Render Pass"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &self.stages.interpolation().view,
+                            view: &self.stages.output_staging().view,
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Load,
@@ -308,22 +303,21 @@ impl GraphicsContext {
                     render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
                 }
 
-                self.image_display.clear_changed();
             }
-
-            // Gamma correct the interpolated image
-            self.render_pass(
-                &mut encoder,
-                &self.pipelines.gamma,
-                &self.stages.interpolation().bind_group,
-                &self.stages.output_staging().view,
-                false,
-            );
+            self.image_display.clear_changed();
         }
+
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.gamma,
+            &self.stages.output_staging().bind_group,
+            &self.stages.gamma().view,
+            false,
+        );
 
         // Get current screen texture
         let output = self.surface.get_current_texture()?;
-        let view = output
+        let output_view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -331,13 +325,13 @@ impl GraphicsContext {
         self.render_pass(
             &mut encoder,
             &self.pipelines.output,
-            &self.stages.output_staging().bind_group,
-            &view,
+            &self.stages.gamma().bind_group,
+            &output_view,
             true,
         );
 
         // Render UI
-        self.render_egui(&mut encoder, &view, window);
+        self.render_egui(&mut encoder, &output_view, window);
 
         // Submit all work to queue and present
         self.queue.submit(iter::once(encoder.finish()));
@@ -563,7 +557,7 @@ impl GraphicsContext {
                 if input.mouse_pressed {
                     self.image_display.internal.pos[0] += pos.x - input.last_mouse_pos.x;
                     self.image_display.internal.pos[1] += pos.y - input.last_mouse_pos.y;
-                    self.image_display.set_changed()
+                    // self.image_display.set_changed()
                 }
                 input.last_mouse_pos = pos;
             }

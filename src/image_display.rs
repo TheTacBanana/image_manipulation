@@ -101,13 +101,11 @@ impl ImageDisplayWithBuffers {
     }
 
     pub fn bind(&self, context: &GraphicsContext) {
-        if self.changed {
-            context.queue.write_buffer(
-                &self.buffer,
-                0,
-                bytemuck::bytes_of(&self.internal.into_raw()),
-            );
-        }
+        context.queue.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::bytes_of(&self.internal.into_raw()),
+        );
     }
 
     pub fn set_changed(&mut self) {

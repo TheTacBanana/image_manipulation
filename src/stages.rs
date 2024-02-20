@@ -78,7 +78,7 @@ pub struct RenderStages {
     interpolation: Option<RenderGroup>,
     kerneled: Option<RenderGroup>,
     min_max: Option<RenderGroup>,
-    normalized: Option<RenderGroup>,
+    gamma: Option<RenderGroup>,
     output_staging: Option<RenderGroup>,
 }
 
@@ -102,7 +102,7 @@ impl RenderStages {
             self.min_max.get_or_insert_with(|| {
                 RenderGroup::new(context, (8, 8), wgpu::TextureFormat::Rgba32Float)
             });
-            self.normalized = Some(RenderGroup::new(
+            self.gamma = Some(RenderGroup::new(
                 context,
                 dims,
                 wgpu::TextureFormat::Rgba32Float,
@@ -127,8 +127,8 @@ impl RenderStages {
         &self.min_max.as_ref().unwrap()
     }
 
-    pub fn normalized(&self) -> &RenderGroup {
-        &self.normalized.as_ref().unwrap()
+    pub fn gamma(&self) -> &RenderGroup {
+        &self.gamma.as_ref().unwrap()
     }
 
     pub fn output_staging(&self) -> &RenderGroup {
