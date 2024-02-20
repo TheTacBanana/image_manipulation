@@ -11,6 +11,7 @@ pub struct ImageDisplayWithBuffers {
     pub bind_group: wgpu::BindGroup,
 }
 
+// Data for Image Display
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImageDisplay {
     pub window_size: [f32; 2],
@@ -22,7 +23,27 @@ pub struct ImageDisplay {
     pub background_colour: [f32; 4],
 }
 
+// Raw representation of ImageDisplay for binding to the GPU
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct RawImageDisplay {
+    pub window_size: [f32; 2],
+    pub pos: [f32; 2],
+    pub size: f32,
+    pub gamma: f32,
+    pub scaling_mode: u32,
+    pub _pad: [f32; 7],
+}
+
+// Scaling Mode Enum
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub enum ScalingMode {
+    NearestNeighbour = 0,
+    Bilinear = 1,
+}
+
 impl ImageDisplayWithBuffers {
+    // Create a new ImageDispay and generate buffers for data to be stored in
     pub fn from_window(
         device: &wgpu::Device,
         window: &winit::window::Window,
@@ -33,6 +54,7 @@ impl ImageDisplayWithBuffers {
             window.inner_size().height as f32,
         ];
 
+        // Create layout entrys
         let entries = (0..=6)
             .map(|i| wgpu::BindGroupLayoutEntry {
                 binding: i,
@@ -46,17 +68,20 @@ impl ImageDisplayWithBuffers {
             })
             .collect::<Vec<wgpu::BindGroupLayoutEntry>>();
 
+        // Create layout from entries
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &entries,
             label: Some("image_display_bind_group_layout"),
         });
 
+        // Create buffer with intiial contents of default ImageDisplay
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("image_display_buf"),
             contents: bytemuck::bytes_of(&raw_image_display),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Create bind group entries
         let entries = (0..=6)
             .map(|i| wgpu::BindGroupEntry {
                 binding: i,
@@ -68,6 +93,7 @@ impl ImageDisplayWithBuffers {
             })
             .collect::<Vec<wgpu::BindGroupEntry>>();
 
+        // Create bind group
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &layout,
             entries: &entries,
@@ -83,6 +109,7 @@ impl ImageDisplayWithBuffers {
             ..
         } = raw_image_display;
 
+        // Return ImageDisplay
         ImageDisplayWithBuffers {
             changed: true,
             internal: ImageDisplay {
@@ -100,6 +127,7 @@ impl ImageDisplayWithBuffers {
         }
     }
 
+    // Bind ImageDisplay to the buffer
     pub fn bind(&self, context: &GraphicsContext) {
         context.queue.write_buffer(
             &self.buffer,
@@ -118,6 +146,7 @@ impl ImageDisplayWithBuffers {
 }
 
 impl ImageDisplay {
+    // Converts an ImageDisplay into RawImageDisplay for binding
     pub fn into_raw(&self) -> RawImageDisplay {
         RawImageDisplay {
             window_size: self.window_size,
@@ -129,6 +158,7 @@ impl ImageDisplay {
         }
     }
 
+    // Reset default values
     pub fn reset_default(&mut self) {
         let RawImageDisplay {
             window_size,
@@ -148,17 +178,6 @@ impl ImageDisplay {
     }
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct RawImageDisplay {
-    pub window_size: [f32; 2],
-    pub pos: [f32; 2],
-    pub size: f32,
-    pub gamma: f32,
-    pub scaling_mode: u32,
-    pub _pad: [f32; 7],
-}
-
 impl Default for RawImageDisplay {
     fn default() -> Self {
         Self {
@@ -170,12 +189,6 @@ impl Default for RawImageDisplay {
             _pad: Default::default(),
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-pub enum ScalingMode {
-    NearestNeighbour = 0,
-    Bilinear = 1,
 }
 
 impl ScalingMode {

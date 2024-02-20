@@ -1,3 +1,4 @@
+// Simple struct vertex
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
@@ -11,6 +12,7 @@ impl Vertex {
         }
     }
 
+    // Get Buffer layout description for a Vertex
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
         wgpu::VertexBufferLayout {

@@ -5,9 +5,9 @@ use crate::{
     vertex::Vertex,
 };
 
+// Pipelines created from shaders
 pub struct Pipelines {
     pub bind_group_layouts: TextureBindGroupLayouts,
-
     pub interpolation: wgpu::RenderPipeline,
     pub kernel: wgpu::RenderPipeline,
     pub min_max: wgpu::RenderPipeline,
@@ -16,23 +16,27 @@ pub struct Pipelines {
     pub output: wgpu::RenderPipeline,
 }
 
+// Bind group layouts for textures
 pub struct TextureBindGroupLayouts {
     pub bgra8unormsrgb: wgpu::BindGroupLayout,
     pub rgba32float: wgpu::BindGroupLayout,
 }
 
 impl Pipelines {
+    // Create a new Pipelines struct and load all shaders
     pub fn new(
         device: &wgpu::Device,
         output_format: wgpu::TextureFormat,
         image_display_layout: &wgpu::BindGroupLayout,
         kernel_array_layout: &wgpu::BindGroupLayout,
     ) -> Self {
+        // Create Texture Bind Group Layouts
         let layouts = TextureBindGroupLayouts {
             bgra8unormsrgb: Texture::create_bind_group_layout(device),
             rgba32float: Texture::create_non_filter_bind_group_layout(device),
         };
 
+        // Load Shaders
         let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl");
         let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl");
         let s_for_loop = Pipelines::load_shader(device, "./src/shader/min_max.wgsl");
@@ -40,6 +44,7 @@ impl Pipelines {
         let s_gamma = Pipelines::load_shader(device, "./src/shader/gamma_correction.wgsl");
         let s_output = Pipelines::load_shader(device, "./src/shader/output.wgsl");
 
+        // Create Pipeline Layouts
         let interpolation_layout = Pipelines::create_pipeline_layout(
             device,
             &[
@@ -66,6 +71,7 @@ impl Pipelines {
             ],
         );
 
+        // Create Pipelines
         let interpolation = Pipelines::create_pipeline(
             device,
             s_interpolation,
@@ -109,6 +115,7 @@ impl Pipelines {
             "output",
         );
 
+        // Return pipelines struct
         Pipelines {
             bind_group_layouts: layouts,
             interpolation,
@@ -120,6 +127,7 @@ impl Pipelines {
         }
     }
 
+    // Load shader bytes and create a shader module
     fn load_shader(device: &wgpu::Device, path: &str) -> wgpu::ShaderModule {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(path),
@@ -129,6 +137,7 @@ impl Pipelines {
         })
     }
 
+    // Create a layout from a list of bind groups
     fn create_pipeline_layout(
         device: &wgpu::Device,
         bind_groups: &[&wgpu::BindGroupLayout],
@@ -140,6 +149,7 @@ impl Pipelines {
         })
     }
 
+    // Create a pipeline with a shader, layout and format it is rendering to
     fn create_pipeline(
         device: &wgpu::Device,
         shader: wgpu::ShaderModule,

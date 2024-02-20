@@ -36,10 +36,7 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn from_bytes(
-        context: &GraphicsContext,
-        bytes: &[u8],
-    ) -> Result<Self> {
+    pub fn from_bytes(context: &GraphicsContext, bytes: &[u8]) -> Result<Self> {
         let img = image::load_from_memory(bytes)?;
         let rgba = img.to_rgba8();
         let dimensions = img.dimensions();
@@ -49,18 +46,16 @@ impl Texture {
             height: dimensions.1,
             depth_or_array_layers: 1,
         };
-        let texture = context.device.create_texture(
-            &wgpu::TextureDescriptor {
-                label: None,
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            }
-        );
+        let texture = context.device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
 
         context.queue.write_texture(
             wgpu::ImageCopyTexture {
@@ -79,19 +74,11 @@ impl Texture {
         );
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = context.device.create_sampler(
-            &wgpu::SamplerDescriptor {
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Nearest,
-                min_filter: wgpu::FilterMode::Nearest,
-                mipmap_filter: wgpu::FilterMode::Nearest,
-                ..Default::default()
-            }
-        );
+        let sampler = Texture::create_sampler(&context.device);
 
-        let bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: &context.pipelines.bind_group_layouts.bgra8unormsrgb,
                 entries: &[
                     wgpu::BindGroupEntry {
@@ -106,9 +93,15 @@ impl Texture {
                 label: None,
             });
 
-        Ok(Self { texture, view, sampler, bind_group })
+        Ok(Self {
+            texture,
+            view,
+            sampler,
+            bind_group,
+        })
     }
 
+    // Create normal bind group layout
     pub fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -133,6 +126,7 @@ impl Texture {
         })
     }
 
+    // Create a non filtering bind group layout
     pub fn create_non_filter_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -158,16 +152,14 @@ impl Texture {
     }
 
     pub fn create_sampler(device: &wgpu::Device) -> wgpu::Sampler {
-        device.create_sampler(
-            &wgpu::SamplerDescriptor {
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Nearest,
-                min_filter: wgpu::FilterMode::Nearest,
-                mipmap_filter: wgpu::FilterMode::Nearest,
-                ..Default::default()
-            }
-        )
+        device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        })
     }
 }

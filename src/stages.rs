@@ -1,5 +1,6 @@
 use crate::context::GraphicsContext;
 
+// Wrapper struct around a render target and source
 pub struct RenderGroup {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
@@ -7,6 +8,7 @@ pub struct RenderGroup {
 }
 
 impl RenderGroup {
+    // Create a new Render Group with texture, view and bindgroup
     pub fn new(
         context: &GraphicsContext,
         dims: (u32, u32),
@@ -65,13 +67,9 @@ impl RenderGroup {
             bind_group,
         }
     }
-
-    pub fn size(&self) -> (u32, u32) {
-        let s = self.texture.size();
-        (s.width, s.height)
-    }
 }
 
+// Wrapper around multiple Render Groups for to ensure the correct
 #[derive(Default)]
 pub struct RenderStages {
     target_res: (u32, u32),
@@ -87,6 +85,7 @@ impl RenderStages {
         Self::default()
     }
 
+    // Update the resolution of the every stage
     pub fn update_resolution(&mut self, context: &GraphicsContext, dims: (u32, u32)) {
         if self.target_res != dims {
             self.interpolation = Some(RenderGroup::new(

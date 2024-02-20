@@ -1,7 +1,7 @@
-use std::{default, iter, mem};
+use std::{iter, mem};
 
-use cgmath::{dot, InnerSpace};
-use egui::{epaint::text, Checkbox, ComboBox, Slider};
+use cgmath::InnerSpace;
+use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use futures::SinkExt;
@@ -20,6 +20,7 @@ use crate::{
 
 use super::window::Window;
 
+// Graphical conext containing all data
 pub struct GraphicsContext {
     pub surface: wgpu::Surface,
     pub device: wgpu::Device,
@@ -37,6 +38,7 @@ pub struct GraphicsContext {
     pub array_bind_group: wgpu::BindGroup,
 }
 
+// Context containing egui related items
 pub struct EguiContext {
     pub platform: Platform,
     pub render_pass: RenderPass,
@@ -44,6 +46,7 @@ pub struct EguiContext {
 }
 
 impl GraphicsContext {
+    // Vertexes spanning screenspace
     const VERTICES: &'static [Vertex] = &[
         Vertex::xyz(1.0, 1.0, 0.0),
         Vertex::xyz(1.0, -1.0, 0.0),
@@ -51,12 +54,15 @@ impl GraphicsContext {
         Vertex::xyz(-1.0, 1.0, 0.0),
     ];
 
+    // Indices for vertexes
     const INDICES: &'static [u16] = &[0, 3, 1, 1, 3, 2];
 
+    // Laplacian matrix
     const LAPLACIAN: &'static [i32] = &[
         -4, -1, 0, -1, -4, -1, 2, 3, 2, -1, 0, 3, 4, 3, 0, -1, 2, 3, 2, -1, -4, -1, 0, -1, -4,
     ];
 
+    // Create a new graphics contexts
     pub async fn new(window: &Window) -> Self {
         let size = window.raw.inner_size();
 
@@ -126,7 +132,12 @@ impl GraphicsContext {
         let texture_sampler = Texture::create_sampler(&device);
         let (array_layout, array_buffer, array_bind_group) =
             GraphicsContext::create_array_bindings(&device);
-        let pipelines = Pipelines::new(&device, surface_format, &image_display.layout, &array_layout);
+        let pipelines = Pipelines::new(
+            &device,
+            surface_format,
+            &image_display.layout,
+            &array_layout,
+        );
         let stages = RenderStages::new();
         let buffers = GraphicsContext::create_buffers(&device);
 
@@ -148,6 +159,7 @@ impl GraphicsContext {
         }
     }
 
+    // Create vertex and index buffers
     pub fn create_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer) {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vertex_buf"),
@@ -164,6 +176,7 @@ impl GraphicsContext {
         (vertex_buffer, index_buffer)
     }
 
+    // Create bindings for the kernel array
     pub fn create_array_bindings(
         device: &wgpu::Device,
     ) -> (wgpu::BindGroupLayout, wgpu::Buffer, wgpu::BindGroup) {
@@ -203,6 +216,7 @@ impl GraphicsContext {
         (layout, buffer, bind_group)
     }
 
+    // Resize window callback
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
             self.config.width = width;
@@ -220,6 +234,7 @@ impl GraphicsContext {
         &mut self.image_display.internal
     }
 
+    // Perform all render tasks per frame
     pub fn render(
         &mut self,
         texture: &Texture,
@@ -268,6 +283,7 @@ impl GraphicsContext {
                     false,
                 );
 
+                // Get Min Max from the kernelled image
                 self.render_pass(
                     &mut encoder,
                     &self.pipelines.min_max,
@@ -276,6 +292,7 @@ impl GraphicsContext {
                     false,
                 );
 
+                // Normalize the image based on the Min Max found
                 {
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("Render Pass"),
@@ -302,11 +319,11 @@ impl GraphicsContext {
                         .set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
                     render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
                 }
-
             }
             self.image_display.clear_changed();
         }
 
+        // Gamma correct the staged image
         self.render_pass(
             &mut encoder,
             &self.pipelines.gamma,
@@ -342,6 +359,7 @@ impl GraphicsContext {
         Ok(())
     }
 
+    // Perform a render pass from a bind group, to a texture view
     pub fn render_pass(
         &self,
         encoder: &mut CommandEncoder,
@@ -350,6 +368,7 @@ impl GraphicsContext {
         tex_out: &wgpu::TextureView,
         clear: bool,
     ) {
+        // Begin render pass
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -375,6 +394,7 @@ impl GraphicsContext {
             timestamp_writes: None,
         });
 
+        // Bind eveyrhting and to screenspace
         render_pass.set_pipeline(&pipeline);
         render_pass.set_bind_group(0, &tex_in, &[]);
         render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
@@ -384,12 +404,14 @@ impl GraphicsContext {
         render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
     }
 
+    // Render the ui using egui
     pub fn render_egui(
         &mut self,
         encoder: &mut CommandEncoder,
         view: &TextureView,
         window: &winit::window::Window,
     ) {
+        // Update the egui frametime
         self.egui
             .platform
             .update_time(self.egui.last_frame.elapsed().as_secs_f64());
@@ -398,11 +420,12 @@ impl GraphicsContext {
 
         let cloned = self.image_display().clone();
 
+        // Draw all UI
         let ctx = &self.egui.platform.context();
-
         egui::Window::new("Image Settings")
             .collapsible(false)
             .show(ctx, |ui| {
+                // Open file button
                 if (ui.button("Open file")).clicked() {
                     let dialog = rfd::AsyncFileDialog::new()
                         .add_filter("img", &["png", "jpg"])
@@ -420,6 +443,7 @@ impl GraphicsContext {
                     });
                 }
 
+                // Position Boxes
                 {
                     let mut x_pos = self.image_display().pos[0].to_string();
                     let mut y_pos = self.image_display().pos[1].to_string();
@@ -435,15 +459,18 @@ impl GraphicsContext {
                     }
                 }
 
+                // Gamma correction slider
                 ui.add(
                     Slider::new(&mut self.image_display_mut().gamma, 0.0..=5.0)
                         .text("Gamma Correction"),
                 );
 
+                // Image side slider
                 ui.add(
                     Slider::new(&mut self.image_display_mut().size, 0.0..=10.0).text("Image Size"),
                 );
 
+                // Scaling mode selection box
                 ComboBox::from_label("")
                     .selected_text(format!("{:?}", &mut self.image_display_mut().scaling_mode))
                     .show_ui(ui, |ui| {
@@ -459,15 +486,13 @@ impl GraphicsContext {
                         );
                     });
 
+                // Cross correlation checkbox
                 ui.add(Checkbox::new(
                     &mut self.image_display_mut().cross_correlation,
                     "Cross Correlation",
                 ));
 
-                if ui.button("Reset Default").clicked() {
-                    self.image_display_mut().reset_default();
-                }
-
+                // Background colour wheel
                 {
                     let colour = &mut self.image_display_mut().background_colour;
                     let mut rgb = [colour[0], colour[1], colour[2]];
@@ -477,9 +502,15 @@ impl GraphicsContext {
                     colour[2] = rgb[2];
                 }
 
+                // Reset to defaults button
+                if ui.button("Reset Default").clicked() {
+                    self.image_display_mut().reset_default();
+                }
+
                 self.input.mouse_over_ui = ui.ui_contains_pointer();
             });
 
+        // Check if has changed
         if *self.image_display() != cloned {
             self.image_display.set_changed()
         }
@@ -493,28 +524,19 @@ impl GraphicsContext {
             scale_factor: window.scale_factor() as f32,
         };
         let tdelta = full_output.textures_delta;
-        self.egui
-            .render_pass
-            .add_textures(&self.device, &self.queue, &tdelta)
-            .expect("add texture ok");
-        self.egui.render_pass.update_buffers(
-            &self.device,
-            &self.queue,
-            &paint_jobs,
-            &screen_descriptor,
-        );
 
-        self.egui
-            .render_pass
+        let render_pass = &mut self.egui.render_pass;
+        render_pass
+            .add_textures(&self.device, &self.queue, &tdelta)
+            .unwrap();
+        render_pass.update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
+        render_pass
             .execute(encoder, view, &paint_jobs, &screen_descriptor, None)
             .unwrap();
-
-        self.egui
-            .render_pass
-            .remove_textures(tdelta)
-            .expect("remove texture ok");
+        render_pass.remove_textures(tdelta).unwrap();
     }
 
+    // Process a cursor event
     pub fn process_input(&mut self, event: CursorEvent) {
         let input = &mut self.input;
         match event {

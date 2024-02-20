@@ -18,15 +18,16 @@ use wasm_bindgen::prelude::*;
 use crate::texture::load_bytes;
 
 pub mod context;
-pub mod pipelines;
 pub mod image_display;
 pub mod input;
+pub mod pipelines;
+pub mod stages;
 pub mod texture;
+pub mod thread_context;
 pub mod vertex;
 pub mod window;
-pub mod thread_context;
-pub mod stages;
 
+// Entry point for the program
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn run() {
     cfg_if::cfg_if! {
@@ -38,17 +39,21 @@ pub fn run() {
         }
     }
 
+    // Create a window and graphics context
     let window = Window::new();
     let mut context = pollster::block_on(GraphicsContext::new(&window));
 
+    // Load the initial texture, its bytes includded in the binary
     let mut texture =
         Texture::from_bytes(&context, include_bytes!("../assets/raytrace.jpg")).unwrap();
 
     window.run(move |window, event, control_flow| {
+        // Load a new image if bytes receieved from the channel
         if let Ok(Some(bytes)) = context.thread.receiver.try_next() {
             texture = Texture::from_bytes(&context, &bytes).unwrap();
         }
 
+        // Handle Winit Events
         context.egui.platform.handle_event(&event);
         match event {
             Event::RedrawRequested(_) => {

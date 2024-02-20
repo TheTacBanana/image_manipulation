@@ -1,5 +1,6 @@
 use cgmath::{Vector2, Zero};
 
+// Enum to represent all cursor actions
 #[derive(Debug, Clone, Copy)]
 pub enum CursorEvent {
     ButtonPressed,
@@ -11,6 +12,7 @@ pub enum CursorEvent {
     Scroll(f32),
 }
 
+// Stores data about the current input state
 #[derive(Debug)]
 pub struct InputContext {
     pub last_mouse_pos: Vector2<f32>,

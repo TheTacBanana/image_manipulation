@@ -1,7 +1,12 @@
 use std::future::Future;
 
-use futures::{channel::mpsc::{channel, Receiver, Sender}, executor::ThreadPool};
+use futures::{
+    channel::mpsc::{channel, Receiver, Sender},
+    executor::ThreadPool,
+};
 
+// Thread coantext for asyncronously loading textures,
+// once loaded texture data is sent over a channel
 #[derive(Debug)]
 pub struct ThreadContext {
     pub receiver: Receiver<Vec<u8>>,
@@ -22,6 +27,7 @@ impl Default for ThreadContext {
     }
 }
 
+// Different execute methods depending on the platform
 impl ThreadContext {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn execute<F: Future<Output = ()> + Send + 'static>(&self, f: F) {
