@@ -24,6 +24,7 @@ pub struct TextureBindGroupLayouts {
 impl Pipelines {
     pub fn new(
         device: &wgpu::Device,
+        output_format: wgpu::TextureFormat,
         image_display_layout: &wgpu::BindGroupLayout,
         kernel_array_layout: &wgpu::BindGroupLayout,
     ) -> Self {
@@ -104,7 +105,7 @@ impl Pipelines {
             device,
             s_output,
             &normal_layout,
-            wgpu::TextureFormat::Bgra8UnormSrgb,
+            output_format,
             "output",
         );
 
@@ -160,12 +161,11 @@ impl Pipelines {
                 targets: &[Some(wgpu::ColorTargetState {
                     format: target_format,
                     blend: match target_format {
-                        wgpu::TextureFormat::Bgra8UnormSrgb => Some(wgpu::BlendState {
+                        wgpu::TextureFormat::Rgba32Float => None,
+                        _ => Some(wgpu::BlendState {
                             color: wgpu::BlendComponent::REPLACE,
                             alpha: wgpu::BlendComponent::REPLACE,
                         }),
-                        wgpu::TextureFormat::Rgba32Float => None,
-                        _ => panic!(),
                     },
                     write_mask: wgpu::ColorWrites::ALL,
                 })],

@@ -1,6 +1,6 @@
 use std::{default, iter, mem};
 
-use cgmath::InnerSpace;
+use cgmath::{dot, InnerSpace};
 use egui::{epaint::text, Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
@@ -129,7 +129,7 @@ impl GraphicsContext {
         let (array_layout, array_buffer, array_bind_group) =
             GraphicsContext::create_array_bindings(&device);
 
-        let pipelines = Pipelines::new(&device, &image_display.layout, &array_layout);
+        let pipelines = Pipelines::new(&device, surface_format, &image_display.layout, &array_layout);
 
         let stages = RenderStages::new();
 
