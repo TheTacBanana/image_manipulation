@@ -48,13 +48,12 @@ fn sample_pixel(pos : vec2<i32>) -> vec4<f32> {
 }
 
 fn nearest_neighbour(tex_pos: vec2<f32>) -> vec4<f32> {
-    let real_step = 1.0 / tex_size();
+    let new_size = tex_size() * image_display.scale;
 
-    let top_left = floor(tex_pos / real_step);
-    let rounded = round((tex_pos / real_step) % 1.0);
-    let sample_coord = vec2<i32>(top_left + rounded);
+    let transformed = tex_size() * tex_pos / new_size;
+    let rounded = vec2<i32>(transformed);
 
-    return sample_pixel(sample_coord);
+    return sample_pixel(rounded);
 }
 
 fn billinear_filtering(tex_pos: vec2<f32>) -> vec4<f32> {
@@ -97,7 +96,7 @@ fn billinear_filtering(tex_pos: vec2<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let point = in.clip_position.xy / floor(tex_size() * image_display.scale);
+    let point = in.clip_position.xy;
     switch image_display.scaling_mode {
         case 0u: {
             return nearest_neighbour(point);
