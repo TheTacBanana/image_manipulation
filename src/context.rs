@@ -137,7 +137,7 @@ impl GraphicsContext {
             surface_format,
             &image_display.layout,
             &array_layout,
-        );
+        ).await;
         let stages = RenderStages::new();
         let buffers = GraphicsContext::create_buffers(&device);
 

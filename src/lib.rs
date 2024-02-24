@@ -8,7 +8,10 @@ use pollster::FutureExt;
 use texture::Texture;
 use window::Window;
 use winit::{
-    event::{Event, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent},
+    event::{
+        Event, KeyboardInput, MouseButton, MouseScrollDelta, Touch, TouchPhase, VirtualKeyCode,
+        WindowEvent,
+    },
     event_loop::ControlFlow,
 };
 
@@ -133,6 +136,25 @@ pub fn run() {
                 winit::event::ElementState::Released => {
                     context.process_input(CursorEvent::ButtonReleased)
                 }
+            },
+            Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                state,
+                                virtual_keycode: Some(VirtualKeyCode::F5),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => match state {
+                winit::event::ElementState::Pressed => {
+                    context.pipelines.hot_load_interpolation(&context.device);
+                    context.image_display.set_changed();
+                }
+                _ => (),
             },
             Event::LoopDestroyed
             | Event::WindowEvent {
