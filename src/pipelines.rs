@@ -13,6 +13,7 @@ pub struct Pipelines {
     pub kernel: wgpu::RenderPipeline,
     pub min_max: wgpu::RenderPipeline,
     pub normalize: wgpu::RenderPipeline,
+    pub gamma_lut: wgpu::RenderPipeline,
     pub gamma: wgpu::RenderPipeline,
     pub output: wgpu::RenderPipeline,
 }
@@ -26,7 +27,7 @@ pub struct TextureBindGroupLayouts {
 pub struct PipelineLayouts {
     interpolation: wgpu::PipelineLayout,
     normal: wgpu::PipelineLayout,
-    normalisation: wgpu::PipelineLayout,
+    dual_tex: wgpu::PipelineLayout,
 }
 
 impl Pipelines {
@@ -48,6 +49,7 @@ impl Pipelines {
         let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl").await;
         let s_for_loop = Pipelines::load_shader(device, "./src/shader/min_max.wgsl").await;
         let s_normalize = Pipelines::load_shader(device, "./src/shader/normalize.wgsl").await;
+        let s_gamma_lut = Pipelines::load_shader(device, "./src/shader/gamma_lookup.wgsl").await;
         let s_gamma = Pipelines::load_shader(device, "./src/shader/gamma_correction.wgsl").await;
         let s_output = Pipelines::load_shader(device, "./src/shader/output.wgsl").await;
 
@@ -68,7 +70,7 @@ impl Pipelines {
                 kernel_array_layout,
             ],
         );
-        let normalisation_layout = Pipelines::create_pipeline_layout(
+        let dual_tex_layout = Pipelines::create_pipeline_layout(
             device,
             &[
                 &layouts.rgba32float,
@@ -81,7 +83,7 @@ impl Pipelines {
         let pipeline_layouts = PipelineLayouts {
             interpolation: interpolation_layout,
             normal: normal_layout,
-            normalisation: normalisation_layout,
+            dual_tex: dual_tex_layout,
         };
 
         // Create Pipelines
@@ -109,14 +111,21 @@ impl Pipelines {
         let normalize = Pipelines::create_pipeline(
             device,
             s_normalize,
-            &pipeline_layouts.normalisation,
+            &pipeline_layouts.dual_tex,
             wgpu::TextureFormat::Rgba32Float,
             "normalize",
+        );
+        let gamma_lut = Pipelines::create_pipeline(
+            device,
+            s_gamma_lut,
+            &pipeline_layouts.normal,
+            wgpu::TextureFormat::Rgba32Float,
+            "gamma_lut",
         );
         let gamma = Pipelines::create_pipeline(
             device,
             s_gamma,
-            &pipeline_layouts.normal,
+            &pipeline_layouts.dual_tex,
             wgpu::TextureFormat::Rgba32Float,
             "gamma",
         );
@@ -136,6 +145,7 @@ impl Pipelines {
             kernel,
             min_max: for_loop,
             normalize,
+            gamma_lut,
             gamma,
             output,
         }

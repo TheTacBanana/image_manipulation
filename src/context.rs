@@ -137,7 +137,8 @@ impl GraphicsContext {
             surface_format,
             &image_display.layout,
             &array_layout,
-        ).await;
+        )
+        .await;
         let stages = RenderStages::new();
         let buffers = GraphicsContext::create_buffers(&device);
 
@@ -273,6 +274,14 @@ impl GraphicsContext {
                 false,
             );
 
+            self.render_pass(
+                &mut encoder,
+                &self.pipelines.gamma_lut,
+                &self.stages.output_staging().bind_group,
+                &self.stages.gamma_lut().view,
+                false,
+            );
+
             if self.image_display().cross_correlation {
                 // Apply kernel to interpolated image
                 self.render_pass(
@@ -324,13 +333,40 @@ impl GraphicsContext {
         }
 
         // Gamma correct the staged image
-        self.render_pass(
-            &mut encoder,
-            &self.pipelines.gamma,
-            &self.stages.output_staging().bind_group,
-            &self.stages.gamma().view,
-            false,
-        );
+        // self.render_pass(
+        //     &mut encoder,
+        //     &self.pipelines.gamma,
+        //     &self.stages.output_staging().bind_group,
+        //     &self.stages.gamma().view,
+        //     false,
+        // );
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.stages.gamma().view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.pipelines.gamma);
+            render_pass.set_bind_group(0, &self.stages.output_staging().bind_group, &[]);
+            render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
+            render_pass.set_bind_group(2, &self.array_bind_group, &[]);
+            render_pass.set_bind_group(3, &self.stages.gamma_lut().bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
+            render_pass
+                .set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
+        }
 
         // Get current screen texture
         let output = self.surface.get_current_texture()?;

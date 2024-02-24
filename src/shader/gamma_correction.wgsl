@@ -18,6 +18,11 @@ var<uniform> image_display : ImageDisplay;
 @group(2) @binding(0)
 var<storage> laplacian : array<i32>;
 
+@group(3) @binding(0)
+var gamma_lut_diffuse: texture_2d<f32>;
+@group(3) @binding(1)
+var gamma_lut_sampler: sampler;
+
 // Vertex shader
 
 struct VertexInput {
@@ -39,14 +44,17 @@ fn vs_main(
 
 // Fragment shader
 
+fn sample_lookup(i : f32) -> f32 {
+    let transformed = round(i * 256.0);
+    return textureSample(gamma_lut_diffuse, gamma_lut_sampler, vec2<f32>((transformed + 0.5) / 256.0, 0.5)).x;
+}
+
 fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
-    var scaled = colour;
-    var inverse_gamma = 1.0 / image_display.gamma;
     return vec4<f32>(
-        pow(scaled.x, inverse_gamma),
-        pow(scaled.y, inverse_gamma),
-        pow(scaled.z, inverse_gamma),
-        pow(scaled.w, inverse_gamma),
+        sample_lookup(colour.x),
+        sample_lookup(colour.y),
+        sample_lookup(colour.z),
+        1.0
     );
 }
 
