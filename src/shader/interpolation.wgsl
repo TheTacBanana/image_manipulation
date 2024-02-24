@@ -49,7 +49,6 @@ fn sample_pixel(pos : vec2<i32>) -> vec4<f32> {
 
 fn nearest_neighbour(tex_pos: vec2<f32>) -> vec4<f32> {
     let new_size = tex_size() * image_display.scale;
-
     let transformed = tex_size() * tex_pos / new_size;
     let rounded = vec2<i32>(transformed);
 
@@ -57,11 +56,10 @@ fn nearest_neighbour(tex_pos: vec2<f32>) -> vec4<f32> {
 }
 
 fn billinear_filtering(tex_pos: vec2<f32>) -> vec4<f32> {
-    let real_step = 1.0 / tex_size();
+    let new_size = tex_size() * image_display.scale;
+    let transformed = (tex_size() * tex_pos / new_size) - 0.5;
 
-    let pixel_pos = tex_pos / real_step;
-
-    let top_left = floor(tex_pos / real_step);
+    let top_left = floor(transformed);
     let top_right = top_left + vec2<f32>(1.0, 0.0);
     let bottom_left = top_left + vec2<f32>(0.0, 1.0);
     let bottom_right = top_left + vec2<f32>(1.0);
@@ -71,15 +69,7 @@ fn billinear_filtering(tex_pos: vec2<f32>) -> vec4<f32> {
     let bottom_left_sample = sample_pixel(vec2<i32>(bottom_left));
     let bottom_right_sample = sample_pixel(vec2<i32>(bottom_right));
 
-    // let top_left = floor(tex_pos / real_step) * real_step;
-    // let top_right = top_left + vec2<f32>(real_step.x, 0.0);
-    // let bottom_left = top_left + vec2<f32>(0.0, real_step.y);
-    // let bottom_right = top_left + real_step;
-
-    // let top_left_sample = sample(top_left);
-    // let top_right_sample = sample(top_right);
-    // let bottom_left_sample = sample(bottom_left);
-    // let bottom_right_sample = sample(bottom_right);
+    let pixel_pos = transformed;
 
     let top_middle = ((top_right.x - pixel_pos.x) / (top_right.x - top_left.x)) * top_left_sample +
                      ((pixel_pos.x - top_left.x) / (top_right.x - top_left.x)) * top_right_sample;
@@ -91,6 +81,7 @@ fn billinear_filtering(tex_pos: vec2<f32>) -> vec4<f32> {
                         ((pixel_pos.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
 
     return middle_middle;
+    // return vec4<f32>(transformed % 1.0, 0.0, 0.0);
 }
 
 
