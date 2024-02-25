@@ -77,6 +77,23 @@ impl RenderGroup {
             bind_group,
         }
     }
+
+    pub fn from_raw(
+        texture: wgpu::Texture,
+        view: wgpu::TextureView,
+        bind_group: wgpu::BindGroup,
+    ) -> Self {
+        RenderGroup {
+            texture,
+            view,
+            bind_group,
+        }
+    }
+
+    pub fn size(&self) -> (u32, u32) {
+        let s = self.texture.size();
+        (s.width, s.height)
+    }
 }
 
 // Wrapper around multiple Render Groups for to ensure the correct

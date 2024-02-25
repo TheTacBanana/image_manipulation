@@ -4,29 +4,46 @@
 use context::GraphicsContext;
 
 use futures::SinkExt;
+use image::EncodableLayout;
 use input::CursorEvent;
-use pollster::FutureExt;
-use texture::Texture;
 use window::Window;
 use winit::{
-    event::{Event, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent},
+    event::{Event, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::ControlFlow,
 };
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::texture::load_bytes;
-
 pub mod context;
 pub mod image_display;
 pub mod input;
 pub mod pipelines;
 pub mod stages;
-pub mod texture;
 pub mod thread_context;
 pub mod vertex;
 pub mod window;
+
+use anyhow::Result;
+use cfg_if::cfg_if;
+
+pub async fn load_bytes(path: &str) -> Result<Vec<u8>> {
+    cfg_if! {
+        if #[cfg(target_arch = "wasm32")] {
+            let window = web_sys::window().unwrap();
+            let origin = window.origin();
+            let base = reqwest::Url::parse(&format!("{}/", origin,)).unwrap();
+            let path = base.join(path).unwrap();
+            let bytes = reqwest::get(path)
+                .await?
+                .bytes()
+                .await?;
+        } else {
+            let bytes = std::fs::read(path)?;
+        }
+    }
+    Ok(bytes.to_vec())
+}
 
 // Entry point for the program
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
@@ -44,21 +61,17 @@ pub async fn run() {
     let window = Window::new();
     let mut context = GraphicsContext::new(&window).await;
 
-    // Load the initial texture, its bytes includded in the binary
-    let mut texture =
-        Texture::from_bytes(&context, include_bytes!("../assets/raytrace.jpg")).unwrap();
-
     window.run(move |window, event, control_flow| {
         // Load a new image if bytes receieved from the channel
         if let Ok(Some(bytes)) = context.thread.receiver.try_next() {
-            texture = Texture::from_bytes(&context, &bytes).unwrap();
+            let _ = context.load_texture(bytes.as_bytes());
         }
 
         // Handle Winit Events
         context.egui.platform.handle_event(&event);
         match event {
             Event::RedrawRequested(_) => {
-                context.render(&texture, window).unwrap();
+                context.render(window).unwrap();
             }
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
@@ -76,29 +89,7 @@ pub async fn run() {
                     if let Ok(bytes) = bytes {
                         let _ = sender.send(bytes).await;
                     }
-                }
-                )
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::Touch(Touch {
-                        location: position,
-                        phase,
-                        id,
-                        ..
-                    }),
-                ..
-            } => {
-                let pos = cgmath::Vector2 {
-                    x: position.x as f32,
-                    y: position.y as f32,
-                };
-                context.process_input(match phase {
-                    TouchPhase::Started => CursorEvent::StartTouch(id, pos),
-                    TouchPhase::Moved => CursorEvent::TouchMove(id, pos),
-                    TouchPhase::Ended => CursorEvent::EndTouch(id),
-                    TouchPhase::Cancelled => return,
-                });
+                })
             }
             Event::WindowEvent {
                 event: WindowEvent::CursorMoved { position, .. },

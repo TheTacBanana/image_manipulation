@@ -1,5 +1,5 @@
 #![feature(async_closure)]
 
 fn main() {
-    cs256::run();
+    pollster::block_on(cs256::run());
 }

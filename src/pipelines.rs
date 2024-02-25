@@ -1,9 +1,4 @@
-use pollster::FutureExt;
-
-use crate::{
-    texture::{load_bytes, Texture},
-    vertex::Vertex,
-};
+use crate::{load_bytes, vertex::Vertex};
 
 // Pipelines created from shaders
 pub struct Pipelines {
@@ -23,6 +18,59 @@ pub struct TextureBindGroupLayouts {
     pub rgba32float: wgpu::BindGroupLayout,
 }
 
+impl TextureBindGroupLayouts {
+    pub fn create(device: &wgpu::Device) -> Self {
+        let bgra8unormsrgb = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+            label: Some("texture_bind_group_layout"),
+        });
+
+        let rgba32float = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                    count: None,
+                },
+            ],
+            label: Some("non_filter_texture_bind_group_layout"),
+        });
+
+        TextureBindGroupLayouts {
+            bgra8unormsrgb,
+            rgba32float,
+        }
+    }
+}
+
 pub struct Binding<'a>(pub u32, pub &'a wgpu::BindGroup);
 
 impl Pipelines {
@@ -33,14 +81,10 @@ impl Pipelines {
         image_display_layout: &wgpu::BindGroupLayout,
     ) -> Self {
         // Create Texture Bind Group Layouts
-        let layouts = TextureBindGroupLayouts {
-            bgra8unormsrgb: Texture::create_bind_group_layout(device),
-            rgba32float: Texture::create_non_filter_bind_group_layout(device),
-        };
+        let layouts = TextureBindGroupLayouts::create(device);
 
         // Load Shaders
-        let s_interpolation =
-            Pipelines::load_shader(device, "./src/shader/interpolation.wgsl").await;
+        let s_interp = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl").await;
         let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl").await;
         let s_for_loop = Pipelines::load_shader(device, "./src/shader/min_max.wgsl").await;
         let s_normalize = Pipelines::load_shader(device, "./src/shader/normalize.wgsl").await;
@@ -61,7 +105,7 @@ impl Pipelines {
         // Create Pipelines
         let interpolation = Pipelines::create_pipeline(
             device,
-            s_interpolation,
+            s_interp,
             &Pipelines::create_pipeline_layout(
                 device,
                 &[&layouts.bgra8unormsrgb, image_display_layout],

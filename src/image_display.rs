@@ -178,6 +178,7 @@ impl ImageDisplay {
         self.scaling_mode = ScalingMode::from_u32(scaling_mode);
         self.background_colour = [0.0, 0.0, 0.0, 1.0];
         self.kernel = *GraphicsContext::LAPLACIAN;
+        self.cross_correlation = false;
     }
 }
 

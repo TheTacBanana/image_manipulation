@@ -1,20 +1,19 @@
 use std::{iter, mem};
 
-use cgmath::InnerSpace;
-use egui::{epaint::text, Checkbox, ComboBox, Slider};
+use anyhow::{Ok, Result};
+use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use futures::SinkExt;
-use image::EncodableLayout;
+use image::{EncodableLayout, GenericImageView};
 use instant::Instant;
-use wgpu::{util::DeviceExt, BindGroupDescriptor, CommandEncoder, TextureView};
+use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
 
 use crate::{
     image_display::{ImageDisplay, ImageDisplayWithBuffers, ScalingMode},
     input::{CursorEvent, InputContext},
     pipelines::{Binding, Pipelines},
     stages::{RenderGroup, RenderStages},
-    texture::Texture,
     thread_context::ThreadContext,
     vertex::Vertex,
 };
@@ -36,6 +35,7 @@ pub struct GraphicsContext {
     pub input: InputContext,
     pub thread: ThreadContext,
     pub kernel_render_group: RenderGroup,
+    pub texture_render_group: RenderGroup,
 }
 
 // Context containing egui related items
@@ -130,7 +130,7 @@ impl GraphicsContext {
         };
 
         let image_display = ImageDisplayWithBuffers::from_window(&device, &window.raw);
-        let texture_sampler = Texture::create_sampler(&device);
+        let texture_sampler = GraphicsContext::create_sampler(&device);
         let pipelines = Pipelines::new(&device, surface_format, &image_display.layout).await;
         let stages = RenderStages::new();
         let buffers = GraphicsContext::create_buffers(&device);
@@ -148,7 +148,15 @@ impl GraphicsContext {
             &GraphicsContext::LAPLACIAN,
         );
 
-        Self {
+        let texture_render_group = RenderGroup::new_without_context(
+            (100, 100),
+            &device,
+            wgpu::TextureFormat::Rgba32Float,
+            &texture_sampler,
+            &pipelines,
+        );
+
+        let mut context = Self {
             surface,
             device,
             queue,
@@ -162,7 +170,14 @@ impl GraphicsContext {
             input: InputContext::default(),
             thread: ThreadContext::default(),
             kernel_render_group,
-        }
+            texture_render_group,
+        };
+
+        context
+            .load_texture(include_bytes!("../assets/raytrace.jpg"))
+            .unwrap();
+
+        context
     }
 
     // Create vertex and index buffers
@@ -180,6 +195,77 @@ impl GraphicsContext {
         });
 
         (vertex_buffer, index_buffer)
+    }
+
+    pub fn create_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+        device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        })
+    }
+
+    pub fn load_texture(&mut self, bytes: &[u8]) -> Result<()> {
+        let img = image::load_from_memory(bytes)?;
+        let rgba = img.to_rgba8();
+        let dimensions = img.dimensions();
+
+        let size = wgpu::Extent3d {
+            width: dimensions.0,
+            height: dimensions.1,
+            depth_or_array_layers: 1,
+        };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        self.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                aspect: wgpu::TextureAspect::All,
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            &rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * dimensions.0),
+                rows_per_image: Some(dimensions.1),
+            },
+            size,
+        );
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.pipelines.bind_group_layouts.bgra8unormsrgb,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.texture_sampler),
+                },
+            ],
+            label: None,
+        });
+
+        self.texture_render_group = RenderGroup::from_raw(texture, view, bind_group);
+
+        Ok(())
     }
 
     pub fn write_kernel_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[f32; 25]) {
@@ -230,12 +316,29 @@ impl GraphicsContext {
         &mut self.image_display.internal
     }
 
+    pub fn scaled_texture_size(&self) -> (u32, u32) {
+        let original_size = self.texture_render_group.size();
+        (
+            u32::max(
+                1,
+                (original_size.0 as f32 * self.image_display().size).floor() as u32,
+            ),
+            u32::max(
+                1,
+                (original_size.1 as f32 * self.image_display().size).floor() as u32,
+            ),
+        )
+    }
+
+    pub fn max_scale(&self) -> f32 {
+        let size = self.texture_render_group.size();
+        let base_size = u32::max(size.0, size.1) as f32;
+        let max_size = self.device.limits().max_texture_dimension_2d as f32;
+        max_size / base_size
+    }
+
     // Perform all render tasks per frame
-    pub fn render(
-        &mut self,
-        texture: &Texture,
-        window: &winit::window::Window,
-    ) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, window: &winit::window::Window) -> Result<()> {
         self.image_display.bind(self);
 
         let mut encoder = self
@@ -244,16 +347,7 @@ impl GraphicsContext {
                 label: Some("Render Encoder"),
             });
 
-        let texture_dims = (
-            u32::max(
-                1,
-                (texture.texture.width() as f32 * self.image_display().size).floor() as u32,
-            ),
-            u32::max(
-                1,
-                (texture.texture.height() as f32 * self.image_display().size).floor() as u32,
-            ),
-        );
+        let texture_dims = self.scaled_texture_size();
 
         if self.image_display.changed {
             let mut stages = mem::take(&mut self.stages);
@@ -266,7 +360,7 @@ impl GraphicsContext {
                 &self.pipelines.interpolation,
                 &self.stages.output_staging().view,
                 &[
-                    Binding(0, &texture.bind_group),
+                    Binding(0, &self.texture_render_group.bind_group),
                     Binding(1, &self.image_display.bind_group),
                 ],
                 false,
@@ -463,8 +557,10 @@ impl GraphicsContext {
                 );
 
                 // Image side slider
+                let max_scale = self.max_scale();
                 ui.add(
-                    Slider::new(&mut self.image_display_mut().size, 0.0..=10.0).text("Image Size"),
+                    Slider::new(&mut self.image_display_mut().size, 0.0..=max_scale)
+                        .text("Image Size"),
                 );
 
                 // Scaling mode selection box
@@ -571,37 +667,6 @@ impl GraphicsContext {
     pub fn process_input(&mut self, event: CursorEvent) {
         let input = &mut self.input;
         match event {
-            CursorEvent::StartTouch(id, pos) => {
-                input.start_touch(id, pos);
-            }
-            CursorEvent::TouchMove(id, pos) => {
-                let delta = input.update_touch(id, pos).unwrap();
-
-                if !input.mouse_over_ui {
-                    match input.touch_count() {
-                        1 => {
-                            self.image_display_mut().pos[0] += delta.x;
-                            self.image_display_mut().pos[1] += delta.y;
-                        }
-                        2 => {
-                            let ts = input.active_touches();
-                            let (one, two) = (ts[0], ts[1]);
-
-                            let between = two - one;
-                            let m1 = between.magnitude();
-                            let m2 = (between + delta).magnitude();
-
-                            self.image_display_mut().size -= (m2 / m1) - 1.0;
-                            self.image_display_mut().size =
-                                f32::max(self.image_display().size, 0.001);
-                        }
-                        _ => (),
-                    }
-                }
-            }
-            CursorEvent::EndTouch(id) => {
-                input.end_touch(id);
-            }
             CursorEvent::ButtonPressed => input.mouse_pressed = true && !input.mouse_over_ui,
             CursorEvent::ButtonReleased => {
                 input.mouse_pressed = false;
@@ -610,7 +675,6 @@ impl GraphicsContext {
                 if input.mouse_pressed {
                     self.image_display.internal.pos[0] += pos.x - input.last_mouse_pos.x;
                     self.image_display.internal.pos[1] += pos.y - input.last_mouse_pos.y;
-                    // self.image_display.set_changed()
                 }
                 input.last_mouse_pos = pos;
             }
@@ -618,8 +682,8 @@ impl GraphicsContext {
                 self.image_display_mut().size +=
                     scroll * (self.image_display().size * self.image_display().size + 1.1).log10();
                 self.image_display_mut().size =
-                    f32::min(f32::max(self.image_display().size, 0.001), 10.0);
-                self.image_display.set_changed()
+                    f32::min(f32::max(self.image_display().size, 0.001), self.max_scale());
+                self.image_display.set_changed();
             }
         }
     }
