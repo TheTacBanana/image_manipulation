@@ -12,7 +12,7 @@ use wgpu::{util::DeviceExt, BindGroupDescriptor, CommandEncoder, TextureView};
 use crate::{
     image_display::{ImageDisplay, ImageDisplayWithBuffers, ScalingMode},
     input::{CursorEvent, InputContext},
-    pipelines::Pipelines,
+    pipelines::{Binding, Pipelines},
     stages::{RenderGroup, RenderStages},
     texture::Texture,
     thread_context::ThreadContext,
@@ -264,16 +264,20 @@ impl GraphicsContext {
             self.render_pass(
                 &mut encoder,
                 &self.pipelines.interpolation,
-                &texture.bind_group,
                 &self.stages.output_staging().view,
+                &[
+                    Binding(0, &texture.bind_group),
+                    Binding(1, &self.image_display.bind_group),
+                ],
                 false,
             );
 
+            // Generate the lookup table
             self.render_pass(
                 &mut encoder,
                 &self.pipelines.gamma_lut,
-                &self.stages.output_staging().bind_group,
                 &self.stages.gamma_lut().view,
+                &[Binding(0, &self.image_display.bind_group)],
                 false,
             );
 
@@ -282,8 +286,12 @@ impl GraphicsContext {
                 self.render_pass(
                     &mut encoder,
                     &self.pipelines.kernel,
-                    &self.stages.output_staging().bind_group,
                     &self.stages.kerneled().view,
+                    &[
+                        Binding(0, &self.stages.output_staging().bind_group),
+                        Binding(1, &self.image_display.bind_group),
+                        Binding(2, &self.kernel_render_group.bind_group),
+                    ],
                     false,
                 );
 
@@ -291,67 +299,42 @@ impl GraphicsContext {
                 self.render_pass(
                     &mut encoder,
                     &self.pipelines.min_max,
-                    &self.stages.kerneled().bind_group,
                     &self.stages.min_max().view,
+                    &[
+                        Binding(0, &self.stages.kerneled().bind_group),
+                        Binding(1, &self.image_display.bind_group),
+                        Binding(2, &self.kernel_render_group.bind_group),
+                    ],
                     false,
                 );
 
                 // Normalize the image based on the Min Max found
-                {
-                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Render Pass"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &self.stages.output_staging().view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        occlusion_query_set: None,
-                        timestamp_writes: None,
-                    });
-
-                    render_pass.set_pipeline(&self.pipelines.normalize);
-                    render_pass.set_bind_group(0, &self.stages.kerneled().bind_group, &[]);
-                    render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-                    render_pass.set_bind_group(2, &self.kernel_render_group.bind_group, &[]);
-                    render_pass.set_bind_group(3, &self.stages.min_max().bind_group, &[]);
-                    render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
-                    render_pass
-                        .set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
-                    render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
-                }
+                self.render_pass(
+                    &mut encoder,
+                    &self.pipelines.normalize,
+                    &self.stages.output_staging().view,
+                    &[
+                        Binding(0, &self.stages.kerneled().bind_group),
+                        Binding(1, &self.image_display.bind_group),
+                        Binding(2, &self.stages.min_max().bind_group),
+                    ],
+                    false,
+                );
             }
             self.image_display.clear_changed();
         }
 
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.stages.gamma().view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            render_pass.set_pipeline(&self.pipelines.gamma);
-            render_pass.set_bind_group(0, &self.stages.output_staging().bind_group, &[]);
-            render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.kernel_render_group.bind_group, &[]);
-            render_pass.set_bind_group(3, &self.stages.gamma_lut().bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
-            render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
-        }
+        self.render_pass(
+            &mut encoder,
+            &self.pipelines.gamma,
+            &self.stages.gamma().view,
+            &[
+                Binding(0, &self.stages.output_staging().bind_group),
+                Binding(1, &self.image_display.bind_group),
+                Binding(2, &self.stages.gamma_lut().bind_group),
+            ],
+            false,
+        );
 
         // Get current screen texture
         let output = self.surface.get_current_texture()?;
@@ -363,8 +346,11 @@ impl GraphicsContext {
         self.render_pass(
             &mut encoder,
             &self.pipelines.output,
-            &self.stages.gamma().bind_group,
             &output_view,
+            &[
+                Binding(0, &&self.stages.gamma().bind_group),
+                Binding(1, &self.image_display.bind_group),
+            ],
             true,
         );
 
@@ -385,8 +371,8 @@ impl GraphicsContext {
         &self,
         encoder: &mut CommandEncoder,
         pipeline: &wgpu::RenderPipeline,
-        tex_in: &wgpu::BindGroup,
         tex_out: &wgpu::TextureView,
+        bindings: &[Binding],
         clear: bool,
     ) {
         // Begin render pass
@@ -417,9 +403,9 @@ impl GraphicsContext {
 
         // Bind everything and draw
         render_pass.set_pipeline(&pipeline);
-        render_pass.set_bind_group(0, &tex_in, &[]);
-        render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-        render_pass.set_bind_group(2, &self.kernel_render_group.bind_group, &[]);
+        for Binding(index, bind_group) in bindings {
+            render_pass.set_bind_group(*index, bind_group, &[])
+        }
         render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
         render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);

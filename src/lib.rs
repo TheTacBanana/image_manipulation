@@ -137,25 +137,6 @@ pub fn run() {
                     context.process_input(CursorEvent::ButtonReleased)
                 }
             },
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state,
-                                virtual_keycode: Some(VirtualKeyCode::F5),
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            } => match state {
-                winit::event::ElementState::Pressed => {
-                    context.pipelines.hot_load_interpolation(&context.device);
-                    context.image_display.set_changed();
-                }
-                _ => (),
-            },
             Event::LoopDestroyed
             | Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

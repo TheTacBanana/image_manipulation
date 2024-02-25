@@ -79,7 +79,5 @@ fn sample(pos : vec2<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // return (sample(in.clip_position.xy) / 512.0) + 0.5;
-    // return (apply_kernel(in.clip_position.xy) / 512.0) + 0.5;
     return apply_kernel(in.clip_position.xy);
 }

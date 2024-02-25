@@ -8,7 +8,6 @@ use crate::{
 // Pipelines created from shaders
 pub struct Pipelines {
     pub bind_group_layouts: TextureBindGroupLayouts,
-    pub pipeline_layouts: PipelineLayouts,
     pub interpolation: wgpu::RenderPipeline,
     pub kernel: wgpu::RenderPipeline,
     pub min_max: wgpu::RenderPipeline,
@@ -24,11 +23,7 @@ pub struct TextureBindGroupLayouts {
     pub rgba32float: wgpu::BindGroupLayout,
 }
 
-pub struct PipelineLayouts {
-    interpolation: wgpu::PipelineLayout,
-    normal: wgpu::PipelineLayout,
-    dual_tex: wgpu::PipelineLayout,
-}
+pub struct Binding<'a>(pub u32, pub &'a wgpu::BindGroup);
 
 impl Pipelines {
     // Create a new Pipelines struct and load all shaders
@@ -44,7 +39,8 @@ impl Pipelines {
         };
 
         // Load Shaders
-        let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl").await;
+        let s_interpolation =
+            Pipelines::load_shader(device, "./src/shader/interpolation.wgsl").await;
         let s_kernel = Pipelines::load_shader(device, "./src/shader/kernel.wgsl").await;
         let s_for_loop = Pipelines::load_shader(device, "./src/shader/min_max.wgsl").await;
         let s_normalize = Pipelines::load_shader(device, "./src/shader/normalize.wgsl").await;
@@ -53,14 +49,6 @@ impl Pipelines {
         let s_output = Pipelines::load_shader(device, "./src/shader/output.wgsl").await;
 
         // Create Pipeline Layouts
-        let interpolation_layout = Pipelines::create_pipeline_layout(
-            device,
-            &[
-                &layouts.bgra8unormsrgb,
-                image_display_layout,
-                &layouts.rgba32float,
-            ],
-        );
         let normal_layout = Pipelines::create_pipeline_layout(
             device,
             &[
@@ -69,80 +57,70 @@ impl Pipelines {
                 &layouts.rgba32float,
             ],
         );
-        let dual_tex_layout = Pipelines::create_pipeline_layout(
-            device,
-            &[
-                &layouts.rgba32float,
-                image_display_layout,
-                &layouts.rgba32float,
-                &layouts.rgba32float,
-            ],
-        );
-
-        let pipeline_layouts = PipelineLayouts {
-            interpolation: interpolation_layout,
-            normal: normal_layout,
-            dual_tex: dual_tex_layout,
-        };
 
         // Create Pipelines
         let interpolation = Pipelines::create_pipeline(
             device,
             s_interpolation,
-            &pipeline_layouts.interpolation,
+            &Pipelines::create_pipeline_layout(
+                device,
+                &[&layouts.bgra8unormsrgb, image_display_layout],
+            ),
             wgpu::TextureFormat::Rgba32Float,
             "interpolation",
         );
         let kernel = Pipelines::create_pipeline(
             device,
             s_kernel,
-            &pipeline_layouts.normal,
+            &normal_layout,
             wgpu::TextureFormat::Rgba32Float,
             "kernel",
         );
-        let for_loop = Pipelines::create_pipeline(
+        let min_max = Pipelines::create_pipeline(
             device,
             s_for_loop,
-            &pipeline_layouts.normal,
+            &normal_layout,
             wgpu::TextureFormat::Rgba32Float,
-            "for_loop",
+            "min_max",
         );
         let normalize = Pipelines::create_pipeline(
             device,
             s_normalize,
-            &pipeline_layouts.dual_tex,
+            &normal_layout,
             wgpu::TextureFormat::Rgba32Float,
             "normalize",
         );
         let gamma_lut = Pipelines::create_pipeline(
             device,
             s_gamma_lut,
-            &pipeline_layouts.normal,
+            &Pipelines::create_pipeline_layout(device, &[&image_display_layout]),
             wgpu::TextureFormat::Rgba32Float,
             "gamma_lut",
         );
         let gamma = Pipelines::create_pipeline(
             device,
             s_gamma,
-            &pipeline_layouts.dual_tex,
+            &normal_layout,
             wgpu::TextureFormat::Rgba32Float,
             "gamma",
         );
         let output = Pipelines::create_pipeline(
             device,
             s_output,
-            &pipeline_layouts.normal,
+            &Pipelines::create_pipeline_layout(
+                device,
+                &[&layouts.rgba32float, &image_display_layout],
+            ),
             output_format,
             "output",
         );
 
         // Return pipelines struct
         Pipelines {
-            pipeline_layouts,
             bind_group_layouts: layouts,
             interpolation,
             kernel,
-            min_max: for_loop,
+            min_max,
             normalize,
             gamma_lut,
             gamma,
@@ -222,15 +200,16 @@ impl Pipelines {
         })
     }
 
-    pub fn hot_load_interpolation(&mut self, device: &wgpu::Device) {
-        let s_interpolation = Pipelines::load_shader(device, "./src/shader/interpolation.wgsl").block_on();
+    // pub fn hot_load_interpolation(&mut self, device: &wgpu::Device) {
+    //     let s_interpolation =
+    //         Pipelines::load_shader(device, "./src/shader/interpolation.wgsl").block_on();
 
-        self.interpolation = Pipelines::create_pipeline(
-            device,
-            s_interpolation,
-            &self.pipeline_layouts.interpolation,
-            wgpu::TextureFormat::Rgba32Float,
-            "interpolation",
-        );
-    }
+    //     self.interpolation = Pipelines::create_pipeline(
+    //         device,
+    //         s_interpolation,
+    //         &self.pipeline_layouts.interpolation,
+    //         wgpu::TextureFormat::Rgba32Float,
+    //         "interpolation",
+    //     );
+    // }
 }

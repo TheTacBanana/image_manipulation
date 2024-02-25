@@ -15,11 +15,6 @@ struct ImageDisplay {
 @group(1) @binding(0)
 var<uniform> image_display : ImageDisplay;
 
-@group(2) @binding(0)
-var kernel_diffuse: texture_2d<f32>;
-@group(2) @binding(1)
-var kernel_sampler: sampler;
-
 // Vertex shader
 
 struct VertexInput {
