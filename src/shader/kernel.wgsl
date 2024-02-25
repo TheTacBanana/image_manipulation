@@ -16,7 +16,9 @@ struct ImageDisplay {
 var<uniform> image_display : ImageDisplay;
 
 @group(2) @binding(0)
-var<storage> laplacian : array<i32>;
+var kernel_diffuse: texture_2d<f32>;
+@group(2) @binding(1)
+var kernel_sampler: sampler;
 
 // Vertex shader
 
@@ -39,13 +41,19 @@ fn vs_main(
 
 // Fragment shader
 
+fn get_kernel_value(pos: vec2<f32>) -> f32 {
+    let kernel_dims = vec2<f32>(textureDimensions(kernel_diffuse));
+    let sample_pos = (pos + floor(kernel_dims / 2.0) + 0.5) / kernel_dims;
+    return unnorm(textureSample(kernel_diffuse, kernel_sampler, sample_pos).x);
+}
+
 fn apply_kernel(pos: vec2<f32>) -> vec4<f32> {
     var s = vec3<f32>(0.0);
     for (var row = -2; row < 3; row += 1) {
         for (var col = -2; col < 3; col += 1) {
             let i = (row + 2) * 5 + (col + 2);
             let sample_pos = pos + vec2<f32>(f32(row), f32(col));
-            s += sample(sample_pos).xyz * f32(laplacian[i]);
+            s += sample(sample_pos).xyz * get_kernel_value(vec2<f32>(f32(row), f32(col)));
         }
     }
     return vec4<f32>(norm(s.x), norm(s.y), norm(s.z), 1.0);
@@ -53,6 +61,10 @@ fn apply_kernel(pos: vec2<f32>) -> vec4<f32> {
 
 fn norm(in: f32) -> f32 {
     return max(0.0, min(1.0, (in / 256.0) + 0.5));
+}
+
+fn unnorm(in: f32) -> f32 {
+    return (in - 0.5) * 256.0;
 }
 
 fn tex_size() -> vec2<f32> {

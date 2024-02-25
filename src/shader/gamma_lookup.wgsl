@@ -1,8 +1,3 @@
-@group(0) @binding(0)
-var t_diffuse: texture_2d<f32>;
-@group(0) @binding(1)
-var s_diffuse: sampler;
-
 struct ImageDisplay {
     window_size: vec2<f32>,
     pos: vec2<f32>,
@@ -14,9 +9,6 @@ struct ImageDisplay {
 
 @group(1) @binding(0)
 var<uniform> image_display : ImageDisplay;
-
-@group(2) @binding(0)
-var<storage> laplacian : array<i32>;
 
 // Vertex shader
 

@@ -5,8 +5,9 @@ use egui::{Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use futures::SinkExt;
+use image::EncodableLayout;
 use instant::Instant;
-use wgpu::{util::DeviceExt, CommandEncoder, TextureView};
+use wgpu::{util::DeviceExt, BindGroupDescriptor, CommandEncoder, TextureView};
 
 use crate::{
     image_display::{ImageDisplay, ImageDisplayWithBuffers, ScalingMode},
@@ -34,8 +35,7 @@ pub struct GraphicsContext {
     pub egui: EguiContext,
     pub input: InputContext,
     pub thread: ThreadContext,
-    pub array_buffer: wgpu::Buffer,
-    pub array_bind_group: wgpu::BindGroup,
+    pub kernel_bind_group: wgpu::BindGroup,
 }
 
 // Context containing egui related items
@@ -136,11 +136,17 @@ impl GraphicsContext {
             &device,
             surface_format,
             &image_display.layout,
-            &array_layout,
         )
         .await;
         let stages = RenderStages::new();
         let buffers = GraphicsContext::create_buffers(&device);
+
+        let kernel_bind_group = GraphicsContext::create_laplacian_texture(
+            &device,
+            &queue,
+            &texture_sampler,
+            &pipelines,
+        );
 
         Self {
             surface,
@@ -155,8 +161,7 @@ impl GraphicsContext {
             egui,
             input: InputContext::default(),
             thread: ThreadContext::default(),
-            array_buffer,
-            array_bind_group,
+            kernel_bind_group,
         }
     }
 
@@ -215,6 +220,76 @@ impl GraphicsContext {
         });
 
         (layout, buffer, bind_group)
+    }
+
+    pub fn create_laplacian_texture(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        sampler: &wgpu::Sampler,
+        pipelines: &Pipelines,
+    ) -> wgpu::BindGroup {
+        let size = wgpu::Extent3d {
+            width: 5,
+            height: 5,
+            depth_or_array_layers: 1,
+        };
+        let laplacian_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        let mut normalized_values = Vec::new();
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                aspect: wgpu::TextureAspect::All,
+                texture: &laplacian_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            &{
+                for i in GraphicsContext::LAPLACIAN {
+                    let rgba = [
+                        f32::max(0.0, f32::min(1.0, (*i as f32 / 256.0) + 0.5)),
+                        0.0,
+                        0.0,
+                        0.0,
+                    ];
+                    normalized_values.extend_from_slice(&rgba);
+                }
+                normalized_values.as_bytes()
+            },
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * 4 * 5),
+                rows_per_image: Some(5),
+            },
+            size,
+        );
+
+        let view = laplacian_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &pipelines.bind_group_layouts.rgba32float,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+            label: None,
+        });
+
+        bind_group
     }
 
     // Resize window callback
@@ -321,7 +396,7 @@ impl GraphicsContext {
                     render_pass.set_pipeline(&self.pipelines.normalize);
                     render_pass.set_bind_group(0, &self.stages.kerneled().bind_group, &[]);
                     render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-                    render_pass.set_bind_group(2, &self.array_bind_group, &[]);
+                    render_pass.set_bind_group(2, &self.kernel_bind_group, &[]);
                     render_pass.set_bind_group(3, &self.stages.min_max().bind_group, &[]);
                     render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
                     render_pass
@@ -331,15 +406,6 @@ impl GraphicsContext {
             }
             self.image_display.clear_changed();
         }
-
-        // Gamma correct the staged image
-        // self.render_pass(
-        //     &mut encoder,
-        //     &self.pipelines.gamma,
-        //     &self.stages.output_staging().bind_group,
-        //     &self.stages.gamma().view,
-        //     false,
-        // );
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -360,11 +426,10 @@ impl GraphicsContext {
             render_pass.set_pipeline(&self.pipelines.gamma);
             render_pass.set_bind_group(0, &self.stages.output_staging().bind_group, &[]);
             render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.array_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.kernel_bind_group, &[]);
             render_pass.set_bind_group(3, &self.stages.gamma_lut().bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
-            render_pass
-                .set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
         }
 
@@ -430,11 +495,11 @@ impl GraphicsContext {
             timestamp_writes: None,
         });
 
-        // Bind eveyrhting and to screenspace
+        // Bind everything and draw
         render_pass.set_pipeline(&pipeline);
         render_pass.set_bind_group(0, &tex_in, &[]);
         render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-        render_pass.set_bind_group(2, &self.array_bind_group, &[]);
+        render_pass.set_bind_group(2, &self.kernel_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
         render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);

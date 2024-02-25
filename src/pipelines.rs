@@ -36,7 +36,6 @@ impl Pipelines {
         device: &wgpu::Device,
         output_format: wgpu::TextureFormat,
         image_display_layout: &wgpu::BindGroupLayout,
-        kernel_array_layout: &wgpu::BindGroupLayout,
     ) -> Self {
         // Create Texture Bind Group Layouts
         let layouts = TextureBindGroupLayouts {
@@ -59,7 +58,7 @@ impl Pipelines {
             &[
                 &layouts.bgra8unormsrgb,
                 image_display_layout,
-                kernel_array_layout,
+                &layouts.rgba32float,
             ],
         );
         let normal_layout = Pipelines::create_pipeline_layout(
@@ -67,7 +66,7 @@ impl Pipelines {
             &[
                 &layouts.rgba32float,
                 image_display_layout,
-                kernel_array_layout,
+                &layouts.rgba32float,
             ],
         );
         let dual_tex_layout = Pipelines::create_pipeline_layout(
@@ -75,7 +74,7 @@ impl Pipelines {
             &[
                 &layouts.rgba32float,
                 image_display_layout,
-                kernel_array_layout,
+                &layouts.rgba32float,
                 &layouts.rgba32float,
             ],
         );
