@@ -1,4 +1,4 @@
-use crate::context::GraphicsContext;
+use crate::{context::GraphicsContext, pipelines::Pipelines};
 
 // Wrapper struct around a render target and source
 pub struct RenderGroup {
@@ -14,7 +14,23 @@ impl RenderGroup {
         dims: (u32, u32),
         format: wgpu::TextureFormat,
     ) -> RenderGroup {
-        let tex = context.device.create_texture(&wgpu::TextureDescriptor {
+        Self::new_without_context(
+            dims,
+            &context.device,
+            format,
+            &context.texture_sampler,
+            &context.pipelines,
+        )
+    }
+
+    pub fn new_without_context(
+        dims: (u32, u32),
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        sampler: &wgpu::Sampler,
+        pipelines: &Pipelines,
+    ) -> Self {
+        let tex = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
                 width: dims.0,
@@ -37,30 +53,24 @@ impl RenderGroup {
             ..Default::default()
         });
 
-        let bind_group = context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: match format {
-                    wgpu::TextureFormat::Rgba32Float => {
-                        &context.pipelines.bind_group_layouts.rgba32float
-                    }
-                    wgpu::TextureFormat::Bgra8UnormSrgb => {
-                        &context.pipelines.bind_group_layouts.bgra8unormsrgb
-                    }
-                    _ => panic!(),
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: match format {
+                wgpu::TextureFormat::Rgba32Float => &pipelines.bind_group_layouts.rgba32float,
+                wgpu::TextureFormat::Bgra8UnormSrgb => &pipelines.bind_group_layouts.bgra8unormsrgb,
+                _ => panic!(),
+            },
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
                 },
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&context.texture_sampler),
-                    },
-                ],
-                label: None,
-            });
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+            label: None,
+        });
         RenderGroup {
             texture: tex,
             view,

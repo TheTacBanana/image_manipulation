@@ -1,7 +1,7 @@
 use std::{iter, mem};
 
 use cgmath::InnerSpace;
-use egui::{Checkbox, ComboBox, Slider};
+use egui::{epaint::text, Checkbox, ComboBox, Slider};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use futures::SinkExt;
@@ -13,7 +13,7 @@ use crate::{
     image_display::{ImageDisplay, ImageDisplayWithBuffers, ScalingMode},
     input::{CursorEvent, InputContext},
     pipelines::Pipelines,
-    stages::RenderStages,
+    stages::{RenderGroup, RenderStages},
     texture::Texture,
     thread_context::ThreadContext,
     vertex::Vertex,
@@ -35,7 +35,7 @@ pub struct GraphicsContext {
     pub egui: EguiContext,
     pub input: InputContext,
     pub thread: ThreadContext,
-    pub kernel_bind_group: wgpu::BindGroup,
+    pub kernel_render_group: RenderGroup,
 }
 
 // Context containing egui related items
@@ -58,8 +58,9 @@ impl GraphicsContext {
     const INDICES: &'static [u16] = &[0, 3, 1, 1, 3, 2];
 
     // Laplacian matrix
-    const LAPLACIAN: &'static [i32] = &[
-        -4, -1, 0, -1, -4, -1, 2, 3, 2, -1, 0, 3, 4, 3, 0, -1, 2, 3, 2, -1, -4, -1, 0, -1, -4,
+    pub const LAPLACIAN: &'static [f32; 25] = &[
+        -4.0, -1.0, 0.0, -1.0, -4.0, -1.0, 2.0, 3.0, 2.0, -1.0, 0.0, 3.0, 4.0, 3.0, 0.0, -1.0, 2.0,
+        3.0, 2.0, -1.0, -4.0, -1.0, 0.0, -1.0, -4.0,
     ];
 
     // Create a new graphics contexts
@@ -130,22 +131,21 @@ impl GraphicsContext {
 
         let image_display = ImageDisplayWithBuffers::from_window(&device, &window.raw);
         let texture_sampler = Texture::create_sampler(&device);
-        let (array_layout, array_buffer, array_bind_group) =
-            GraphicsContext::create_array_bindings(&device);
-        let pipelines = Pipelines::new(
-            &device,
-            surface_format,
-            &image_display.layout,
-        )
-        .await;
+        let pipelines = Pipelines::new(&device, surface_format, &image_display.layout).await;
         let stages = RenderStages::new();
         let buffers = GraphicsContext::create_buffers(&device);
 
-        let kernel_bind_group = GraphicsContext::create_laplacian_texture(
+        let kernel_render_group = RenderGroup::new_without_context(
+            (5, 5),
             &device,
-            &queue,
+            wgpu::TextureFormat::Rgba32Float,
             &texture_sampler,
             &pipelines,
+        );
+        GraphicsContext::write_kernel_texture(
+            &queue,
+            &kernel_render_group.texture,
+            &GraphicsContext::LAPLACIAN,
         );
 
         Self {
@@ -161,7 +161,7 @@ impl GraphicsContext {
             egui,
             input: InputContext::default(),
             thread: ThreadContext::default(),
-            kernel_bind_group,
+            kernel_render_group,
         }
     }
 
@@ -182,80 +182,19 @@ impl GraphicsContext {
         (vertex_buffer, index_buffer)
     }
 
-    // Create bindings for the kernel array
-    pub fn create_array_bindings(
-        device: &wgpu::Device,
-    ) -> (wgpu::BindGroupLayout, wgpu::Buffer, wgpu::BindGroup) {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: wgpu::BufferSize::new(
-                        (mem::size_of::<i32>() * Self::LAPLACIAN.len()) as _,
-                    ),
-                },
-                count: None,
-            }],
-            label: Some("array_bind_group_layout"),
-        });
-
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("image_display_buf"),
-            contents: bytemuck::cast_slice(&Self::LAPLACIAN),
-            usage: wgpu::BufferUsages::UNIFORM
-                | wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
-            label: Some("image_display_bind_group"),
-        });
-
-        (layout, buffer, bind_group)
-    }
-
-    pub fn create_laplacian_texture(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        sampler: &wgpu::Sampler,
-        pipelines: &Pipelines,
-    ) -> wgpu::BindGroup {
-        let size = wgpu::Extent3d {
-            width: 5,
-            height: 5,
-            depth_or_array_layers: 1,
-        };
-        let laplacian_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba32Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-
+    pub fn write_kernel_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[f32; 25]) {
         let mut normalized_values = Vec::new();
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 aspect: wgpu::TextureAspect::All,
-                texture: &laplacian_texture,
+                texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             &{
-                for i in GraphicsContext::LAPLACIAN {
+                for i in data {
                     let rgba = [
-                        f32::max(0.0, f32::min(1.0, (*i as f32 / 256.0) + 0.5)),
+                        f32::max(0.0, f32::min(1.0, (*i / 256.0) + 0.5)),
                         0.0,
                         0.0,
                         0.0,
@@ -269,27 +208,8 @@ impl GraphicsContext {
                 bytes_per_row: Some(4 * 4 * 5),
                 rows_per_image: Some(5),
             },
-            size,
+            texture.size(),
         );
-
-        let view = laplacian_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &pipelines.bind_group_layouts.rgba32float,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-            label: None,
-        });
-
-        bind_group
     }
 
     // Resize window callback
@@ -396,7 +316,7 @@ impl GraphicsContext {
                     render_pass.set_pipeline(&self.pipelines.normalize);
                     render_pass.set_bind_group(0, &self.stages.kerneled().bind_group, &[]);
                     render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-                    render_pass.set_bind_group(2, &self.kernel_bind_group, &[]);
+                    render_pass.set_bind_group(2, &self.kernel_render_group.bind_group, &[]);
                     render_pass.set_bind_group(3, &self.stages.min_max().bind_group, &[]);
                     render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
                     render_pass
@@ -426,7 +346,7 @@ impl GraphicsContext {
             render_pass.set_pipeline(&self.pipelines.gamma);
             render_pass.set_bind_group(0, &self.stages.output_staging().bind_group, &[]);
             render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-            render_pass.set_bind_group(2, &self.kernel_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.kernel_render_group.bind_group, &[]);
             render_pass.set_bind_group(3, &self.stages.gamma_lut().bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
             render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
@@ -499,7 +419,7 @@ impl GraphicsContext {
         render_pass.set_pipeline(&pipeline);
         render_pass.set_bind_group(0, &tex_in, &[]);
         render_pass.set_bind_group(1, &self.image_display.bind_group, &[]);
-        render_pass.set_bind_group(2, &self.kernel_bind_group, &[]);
+        render_pass.set_bind_group(2, &self.kernel_render_group.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.buffers.0.slice(..));
         render_pass.set_index_buffer(self.buffers.1.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
@@ -546,23 +466,13 @@ impl GraphicsContext {
 
                 // Position Boxes
                 {
-                    let mut x_pos = self.image_display().pos[0].to_string();
-                    let mut y_pos = self.image_display().pos[1].to_string();
-
-                    ui.add(egui::TextEdit::singleline(&mut x_pos));
-                    ui.add(egui::TextEdit::singleline(&mut y_pos));
-
-                    if let Ok(x_pos) = x_pos.parse::<f32>() {
-                        self.image_display_mut().pos[0] = x_pos;
-                    }
-                    if let Ok(y_pos) = y_pos.parse::<f32>() {
-                        self.image_display_mut().pos[1] = y_pos;
-                    }
+                    ui.add(egui::DragValue::new(&mut self.image_display_mut().pos[0]).speed(1.0));
+                    ui.add(egui::DragValue::new(&mut self.image_display_mut().pos[1]).speed(1.0));
                 }
 
                 // Gamma correction slider
                 ui.add(
-                    Slider::new(&mut self.image_display_mut().gamma, 0.0..=5.0)
+                    Slider::new(&mut self.image_display_mut().gamma, 0.0..=2.0)
                         .text("Gamma Correction"),
                 );
 
@@ -587,11 +497,40 @@ impl GraphicsContext {
                         );
                     });
 
-                // Cross correlation checkbox
-                ui.add(Checkbox::new(
-                    &mut self.image_display_mut().cross_correlation,
-                    "Cross Correlation",
-                ));
+                // Cross correlation
+                {
+                    ui.add(Checkbox::new(
+                        &mut self.image_display_mut().cross_correlation,
+                        "Cross Correlation",
+                    ));
+
+                    if self.image_display().cross_correlation {
+                        ui.separator();
+
+                        for row in 0..5 {
+                            ui.horizontal(|ui| {
+                                for col in 0..5 {
+                                    ui.add(
+                                        egui::DragValue::new(
+                                            &mut self.image_display_mut().kernel[5 * row + col],
+                                        )
+                                        .speed(0.01)
+                                        .clamp_range(-10.0..=10.0),
+                                    );
+                                }
+                            });
+                        }
+                        if ui.button("Update").clicked() {
+                            GraphicsContext::write_kernel_texture(
+                                &self.queue,
+                                &self.kernel_render_group.texture,
+                                &self.image_display.internal.kernel,
+                            );
+                            self.image_display.set_changed();
+                        }
+                        ui.separator();
+                    }
+                }
 
                 // Background colour wheel
                 {
@@ -606,6 +545,11 @@ impl GraphicsContext {
                 // Reset to defaults button
                 if ui.button("Reset Default").clicked() {
                     self.image_display_mut().reset_default();
+                    GraphicsContext::write_kernel_texture(
+                        &self.queue,
+                        &self.kernel_render_group.texture,
+                        &self.image_display.internal.kernel,
+                    );
                 }
 
                 self.input.mouse_over_ui = ui.ui_contains_pointer();

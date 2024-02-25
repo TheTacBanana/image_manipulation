@@ -21,6 +21,7 @@ pub struct ImageDisplay {
     pub scaling_mode: ScalingMode,
     pub cross_correlation: bool,
     pub background_colour: [f32; 4],
+    pub kernel: [f32; 25],
 }
 
 // Raw representation of ImageDisplay for binding to the GPU
@@ -120,6 +121,7 @@ impl ImageDisplayWithBuffers {
                 scaling_mode: ScalingMode::from_u32(scaling_mode),
                 cross_correlation: false,
                 background_colour: [0.0, 0.0, 0.0, 1.0],
+                kernel: *GraphicsContext::LAPLACIAN,
             },
             layout,
             buffer,
@@ -175,6 +177,7 @@ impl ImageDisplay {
         self.gamma = gamma;
         self.scaling_mode = ScalingMode::from_u32(scaling_mode);
         self.background_colour = [0.0, 0.0, 0.0, 1.0];
+        self.kernel = *GraphicsContext::LAPLACIAN;
     }
 }
 
