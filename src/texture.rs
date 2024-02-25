@@ -3,19 +3,14 @@ use anyhow::Result;
 use cfg_if::cfg_if;
 use image::GenericImageView;
 
-#[cfg(target_arch = "wasm32")]
-fn format_url(file_name: &str) -> reqwest::Url {
-    let window = web_sys::window().unwrap();
-    let origin = window.origin();
-    let base = reqwest::Url::parse(&format!("{}/", origin,)).unwrap();
-    base.join(file_name).unwrap()
-}
-
 pub async fn load_bytes(path: &str) -> Result<Vec<u8>> {
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
-            let url = format_url(path);
-            let bytes = reqwest::get(url)
+            let window = web_sys::window().unwrap();
+            let origin = window.origin();
+            let base = reqwest::Url::parse(&format!("{}/", origin,)).unwrap();
+            let path = base.join(path).unwrap();
+            let bytes = reqwest::get(path)
                 .await?
                 .bytes()
                 .await?;

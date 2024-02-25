@@ -33,7 +33,7 @@ pub struct RawImageDisplay {
     pub size: f32,
     pub gamma: f32,
     pub scaling_mode: u32,
-    pub _pad: [f32; 7],
+    pub _pad: f32,
 }
 
 // Scaling Mode Enum

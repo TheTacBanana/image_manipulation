@@ -3,15 +3,13 @@
 
 use context::GraphicsContext;
 
+use futures::SinkExt;
 use input::CursorEvent;
 use pollster::FutureExt;
 use texture::Texture;
 use window::Window;
 use winit::{
-    event::{
-        Event, KeyboardInput, MouseButton, MouseScrollDelta, Touch, TouchPhase, VirtualKeyCode,
-        WindowEvent,
-    },
+    event::{Event, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent},
     event_loop::ControlFlow,
 };
 
@@ -32,7 +30,7 @@ pub mod window;
 
 // Entry point for the program
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
-pub fn run() {
+pub async fn run() {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
@@ -44,7 +42,7 @@ pub fn run() {
 
     // Create a window and graphics context
     let window = Window::new();
-    let mut context = pollster::block_on(GraphicsContext::new(&window));
+    let mut context = GraphicsContext::new(&window).await;
 
     // Load the initial texture, its bytes includded in the binary
     let mut texture =
@@ -72,11 +70,14 @@ pub fn run() {
                 event: WindowEvent::DroppedFile(path),
                 ..
             } => {
-                texture = Texture::from_bytes(
-                    &context,
-                    &load_bytes(path.to_str().unwrap()).block_on().unwrap(),
+                let mut sender = context.thread.sender.clone();
+                context.thread.execute(async move {
+                    let bytes = load_bytes(path.to_str().unwrap()).await;
+                    if let Ok(bytes) = bytes {
+                        let _ = sender.send(bytes).await;
+                    }
+                }
                 )
-                .unwrap();
             }
             Event::WindowEvent {
                 event:
