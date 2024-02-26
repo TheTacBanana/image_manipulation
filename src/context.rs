@@ -264,6 +264,7 @@ impl GraphicsContext {
         });
 
         self.texture_render_group = RenderGroup::from_raw(texture, view, bind_group);
+        self.image_display.set_changed();
 
         Ok(())
     }
