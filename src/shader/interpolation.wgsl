@@ -33,51 +33,57 @@ fn vs_main(
     return out;
 }
 
+// Get the size of the texture into the shader
 fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 
+// Sample the texture at the pixel coordinate
 fn sample_pixel(pos : vec2<i32>) -> vec4<f32> {
     let clamped = min(max(pos, vec2<i32>(0)), vec2<i32>(tex_size()));
     let transformed = (vec2<f32>(clamped) + vec2<f32>(0.5)) / tex_size();
     return textureSample(t_diffuse, s_diffuse, transformed);
 }
 
-fn nearest_neighbour(tex_pos: vec2<f32>) -> vec4<f32> {
+// Perform nearest neighbour interpolation for the coordinate
+fn nearest_neighbour(pos: vec2<f32>) -> vec4<f32> {
     let new_size = tex_size() * image_display.scale;
-    let transformed = tex_size() * tex_pos / new_size;
+    let transformed = tex_size() * pos / new_size;
     let rounded = vec2<i32>(transformed);
 
     return sample_pixel(rounded);
 }
 
-fn billinear_filtering(tex_pos: vec2<f32>) -> vec4<f32> {
+// Perform billinear interpolation for the coordinate
+fn billinear(pos: vec2<f32>) -> vec4<f32> {
     let new_size = tex_size() * image_display.scale;
-    let transformed = (tex_size() * tex_pos / new_size) - 0.5;
+    let transformed = (tex_size() * pos / new_size) - 0.5;
 
+    // Get all texture coordinates
     let top_left = floor(transformed);
     let top_right = top_left + vec2<f32>(1.0, 0.0);
     let bottom_left = top_left + vec2<f32>(0.0, 1.0);
     let bottom_right = top_left + vec2<f32>(1.0);
 
+    // Sample all coordinates
     let top_left_sample = sample_pixel(vec2<i32>(top_left));
     let top_right_sample = sample_pixel(vec2<i32>(top_right));
     let bottom_left_sample = sample_pixel(vec2<i32>(bottom_left));
     let bottom_right_sample = sample_pixel(vec2<i32>(bottom_right));
 
-    let pixel_pos = transformed;
+    // Intepolate between Top Left and Top Right
+    let top_middle = ((top_right.x - transformed.x) / (top_right.x - top_left.x)) * top_left_sample +
+                     ((transformed.x - top_left.x) / (top_right.x - top_left.x)) * top_right_sample;
 
-    let top_middle = ((top_right.x - pixel_pos.x) / (top_right.x - top_left.x)) * top_left_sample +
-                     ((pixel_pos.x - top_left.x) / (top_right.x - top_left.x)) * top_right_sample;
+    // Interpolate between Bottom Left and Bottom Right
+    let bottom_middle = ((bottom_right.x - transformed.x) / (bottom_right.x - bottom_left.x)) * bottom_left_sample +
+                        ((transformed.x - bottom_left.x) / (bottom_right.x - bottom_left.x)) * bottom_right_sample;
 
-    let bottom_middle = ((bottom_right.x - pixel_pos.x) / (bottom_right.x - bottom_left.x)) * bottom_left_sample +
-                        ((pixel_pos.x - bottom_left.x) / (bottom_right.x - bottom_left.x)) * bottom_right_sample;
-
-    let middle_middle = ((bottom_left.y - pixel_pos.y) / (bottom_left.y - top_left.y)) * top_middle +
-                        ((pixel_pos.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
+    // Interpolate between the previous two
+    let middle_middle = ((bottom_left.y - transformed.y) / (bottom_left.y - top_left.y)) * top_middle +
+                        ((transformed.y - top_left.y) / (bottom_left.y - top_left.y)) * bottom_middle;
 
     return middle_middle;
-    // return vec4<f32>(transformed % 1.0, 0.0, 0.0);
 }
 
 
@@ -89,7 +95,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             return nearest_neighbour(point);
         }
         case 1u: {
-            return billinear_filtering(point);
+            return billinear(point);
         }
         default: {
             discard;

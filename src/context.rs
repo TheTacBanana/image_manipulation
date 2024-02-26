@@ -318,15 +318,10 @@ impl GraphicsContext {
 
     pub fn scaled_texture_size(&self) -> (u32, u32) {
         let original_size = self.texture_render_group.size();
+        let scale = self.image_display().size;
         (
-            u32::max(
-                1,
-                (original_size.0 as f32 * self.image_display().size).floor() as u32,
-            ),
-            u32::max(
-                1,
-                (original_size.1 as f32 * self.image_display().size).floor() as u32,
-            ),
+            u32::max(1, (original_size.0 as f32 * scale).floor() as u32),
+            u32::max(1, (original_size.1 as f32 * scale).floor() as u32),
         )
     }
 

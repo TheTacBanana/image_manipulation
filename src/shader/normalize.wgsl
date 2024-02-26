@@ -40,16 +40,21 @@ fn vs_main(
 
 // Fragment shader
 
+
+// Get the size of the texture into the shader
 fn tex_size() -> vec2<f32> {
     return vec2<f32>(textureDimensions(t_diffuse));
 }
 
-fn sample(pos : vec2<f32>) -> vec4<f32> {
-    let clamped = min(max(vec2<i32>(pos), vec2<i32>(0)), vec2<i32>(tex_size()));
+// Sample the texture at the pixel coordinate
+fn sample_pixel(pixel : vec2<i32>) -> vec4<f32> {
+    let clamped = min(max(vec2<i32>(pixel), vec2<i32>(0)), vec2<i32>(tex_size()));
     let transformed = (vec2<f32>(clamped) + vec2<f32>(0.5)) / tex_size();
     return textureSample(t_diffuse, s_diffuse, transformed);
 }
 
+// Get the min and max from the bound texture, iterating over
+// each mapped chunk to get the global min-max
 fn min_and_max() -> vec2<f32> {
     var mini = 1.0;
     var maxi = 0.0;
@@ -66,18 +71,20 @@ fn min_and_max() -> vec2<f32> {
     return vec2<f32>(unnorm(mini), unnorm(maxi));
 }
 
+// Apply normalization on a colour
 fn normalize(colour: vec4<f32>) -> vec4<f32> {
     let min_maxi = min_and_max();
     return vec4<f32>((colour.xyz - min_maxi.x) / (min_maxi.y - min_maxi.x), 1.0);
 }
 
+// Un-Normalize 0.0-1.0 to -128.0-128.0
 fn unnorm(in: f32) -> f32 {
     return (in - 0.5) * 256.0;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let s = sample(in.clip_position.xy);
+    let s = sample_pixel(vec2<i32>(in.clip_position.xy));
     let normed = vec4<f32>(unnorm(s.x), unnorm(s.y), unnorm(s.z), 1.0);
     return normalize(normed);
 }

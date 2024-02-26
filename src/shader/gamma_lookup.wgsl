@@ -30,7 +30,8 @@ fn vs_main(
 
 // Fragment shader
 
-fn gamma_correction(colour: f32) -> f32 {
+// Map to a value dependant on the gamma value
+fn gamma_lookup(colour: f32) -> f32 {
     let normalized = colour / 256.0;
     var inverse_gamma = 1.0 / image_display.gamma;
     return pow(normalized, inverse_gamma);
@@ -38,5 +39,5 @@ fn gamma_correction(colour: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(gamma_correction(in.clip_position.x), 0.0, 0.0, 1.0);
+    return vec4<f32>(gamma_lookup(in.clip_position.x), 0.0, 0.0, 1.0);
 }

@@ -40,11 +40,13 @@ fn vs_main(
 
 // Fragment shader
 
+// Lookup the value in the lookup table
 fn sample_lookup(i : f32) -> f32 {
     let transformed = round(i * 256.0);
     return textureSample(gamma_lut_diffuse, gamma_lut_sampler, vec2<f32>((transformed + 0.5) / 256.0, 0.5)).x;
 }
 
+// Apply gamma correction to a colour
 fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(
         sample_lookup(colour.x),
@@ -54,14 +56,9 @@ fn gamma_correction(colour: vec4<f32>) -> vec4<f32> {
     );
 }
 
-fn tex_size() -> vec2<f32> {
-    return vec2<f32>(textureDimensions(t_diffuse));
-}
-
+// Get the sample of the texture in at a pixel
 fn sample(pos : vec2<f32>) -> vec4<f32> {
-    let clamped = min(max(vec2<i32>(pos), vec2<i32>(0)), vec2<i32>(tex_size()));
-    let transformed = (vec2<f32>(clamped) + vec2<f32>(0.5)) / tex_size();
-    return textureSample(t_diffuse, s_diffuse, transformed);
+    return textureSample(t_diffuse, s_diffuse, (pos + vec2<f32>(0.5)) / vec2<f32>(textureDimensions(t_diffuse)));
 }
 
 @fragment
