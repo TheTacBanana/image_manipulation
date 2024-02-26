@@ -243,17 +243,4 @@ impl Pipelines {
             multiview: None,
         })
     }
-
-    // pub fn hot_load_interpolation(&mut self, device: &wgpu::Device) {
-    //     let s_interpolation =
-    //         Pipelines::load_shader(device, "./src/shader/interpolation.wgsl").block_on();
-
-    //     self.interpolation = Pipelines::create_pipeline(
-    //         device,
-    //         s_interpolation,
-    //         &self.pipeline_layouts.interpolation,
-    //         wgpu::TextureFormat::Rgba32Float,
-    //         "interpolation",
-    //     );
-    // }
 }

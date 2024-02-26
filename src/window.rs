@@ -30,7 +30,7 @@ impl Window {
                 .and_then(|win| win.document())
                 .and_then(|doc| {
                     let dst = doc.get_element_by_id("main-body")?;
-                    raw.set_inner_size(PhysicalSize::new(1000 as f32, 1000 as f32));
+                    raw.set_inner_size(PhysicalSize::new(dst.client_width() as f32, dst.client_height() as f32));
                     let canvas = web_sys::Element::from(raw.canvas());
                     dst.append_child(&canvas).ok()?;
                     Some(())
