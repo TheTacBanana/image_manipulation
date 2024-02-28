@@ -27,6 +27,7 @@ pub mod window;
 use anyhow::Result;
 use cfg_if::cfg_if;
 
+/// Load bytes from path, if compiled for web then do via http request
 pub async fn load_bytes(path: &str) -> Result<Vec<u8>> {
     cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
@@ -45,7 +46,7 @@ pub async fn load_bytes(path: &str) -> Result<Vec<u8>> {
     Ok(bytes.to_vec())
 }
 
-// Entry point for the program
+/// Entry point for web
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
     cfg_if::cfg_if! {
@@ -70,15 +71,18 @@ pub async fn run() {
         // Handle Winit Events
         context.egui.platform.handle_event(&event);
         match event {
+            // Render everything
             Event::RedrawRequested(_) => {
                 context.render(window).unwrap();
             }
+            // Trigger a resize
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
                 ..
             } => {
                 context.resize(size.width, size.height);
             }
+            // Accept dropped files
             Event::WindowEvent {
                 event: WindowEvent::DroppedFile(path),
                 ..
@@ -91,6 +95,7 @@ pub async fn run() {
                     }
                 })
             }
+            // Process mouse position input
             Event::WindowEvent {
                 event: WindowEvent::CursorMoved { position, .. },
                 ..
@@ -98,6 +103,7 @@ pub async fn run() {
                 x: position.x as f32,
                 y: position.y as f32,
             })),
+            // Process scroll input
             Event::WindowEvent {
                 event: WindowEvent::MouseWheel { delta, .. },
                 ..
@@ -113,6 +119,7 @@ pub async fn run() {
                     }
                 }),
             }),
+            // Process Mouse button input
             Event::WindowEvent {
                 event:
                     WindowEvent::MouseInput {
@@ -129,14 +136,16 @@ pub async fn run() {
                     context.process_input(CursorEvent::ButtonReleased)
                 }
             },
+            // Redraw if requested
+            Event::MainEventsCleared | Event::UserEvent(_) => {
+                window.request_redraw();
+            }
+            // Exit if close request
             Event::LoopDestroyed
             | Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
             } => *control_flow = ControlFlow::Exit,
-            Event::MainEventsCleared | Event::UserEvent(_) => {
-                window.request_redraw();
-            }
             _ => (),
         }
     });

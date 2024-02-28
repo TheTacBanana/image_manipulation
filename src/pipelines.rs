@@ -1,6 +1,6 @@
 use crate::{load_bytes, vertex::Vertex};
 
-// Pipelines created from shaders
+/// Pipelines created from shaders
 pub struct Pipelines {
     pub bind_group_layouts: TextureBindGroupLayouts,
     pub interpolation: wgpu::RenderPipeline,
@@ -12,13 +12,14 @@ pub struct Pipelines {
     pub output: wgpu::RenderPipeline,
 }
 
-// Bind group layouts for textures
+/// Bind group layouts for textures
 pub struct TextureBindGroupLayouts {
     pub bgra8unormsrgb: wgpu::BindGroupLayout,
     pub rgba32float: wgpu::BindGroupLayout,
 }
 
 impl TextureBindGroupLayouts {
+    /// Create bind groups for filtered and non filtered texture layouts
     pub fn create(device: &wgpu::Device) -> Self {
         let bgra8unormsrgb = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -71,10 +72,11 @@ impl TextureBindGroupLayouts {
     }
 }
 
+/// Bind a bind group to a given index
 pub struct Binding<'a>(pub u32, pub &'a wgpu::BindGroup);
 
 impl Pipelines {
-    // Create a new Pipelines struct and load all shaders
+    /// Create a new Pipelines struct and load all shaders
     pub async fn new(
         device: &wgpu::Device,
         output_format: wgpu::TextureFormat,
@@ -172,7 +174,7 @@ impl Pipelines {
         }
     }
 
-    // Load shader bytes and create a shader module
+    /// Load shader bytes and create a shader module
     async fn load_shader(device: &wgpu::Device, path: &str) -> wgpu::ShaderModule {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(path),
@@ -182,7 +184,7 @@ impl Pipelines {
         })
     }
 
-    // Create a layout from a list of bind groups
+    /// Create a layout from a list of bind groups
     fn create_pipeline_layout(
         device: &wgpu::Device,
         bind_groups: &[&wgpu::BindGroupLayout],
@@ -194,7 +196,7 @@ impl Pipelines {
         })
     }
 
-    // Create a pipeline with a shader, layout and format it is rendering to
+    /// Create a pipeline with a shader, layout and format it is rendering to
     fn create_pipeline(
         device: &wgpu::Device,
         shader: wgpu::ShaderModule,

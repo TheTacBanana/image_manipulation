@@ -1,6 +1,6 @@
 use crate::{context::GraphicsContext, pipelines::Pipelines};
 
-// Wrapper struct around a render target and source
+/// Wrapper struct around a render target and source
 pub struct RenderGroup {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
@@ -8,7 +8,7 @@ pub struct RenderGroup {
 }
 
 impl RenderGroup {
-    // Create a new Render Group with texture, view and bindgroup
+    /// Create a new Render Group with texture, view and bindgroup
     pub fn new(
         context: &GraphicsContext,
         dims: (u32, u32),
@@ -23,6 +23,7 @@ impl RenderGroup {
         )
     }
 
+    /// Create a new RenderGroup with no GraphicsContext available
     pub fn new_without_context(
         dims: (u32, u32),
         device: &wgpu::Device,
@@ -78,6 +79,7 @@ impl RenderGroup {
         }
     }
 
+    /// Build from raw components
     pub fn from_raw(
         texture: wgpu::Texture,
         view: wgpu::TextureView,
@@ -90,13 +92,14 @@ impl RenderGroup {
         }
     }
 
+    /// Get the size of the texture
     pub fn size(&self) -> (u32, u32) {
         let s = self.texture.size();
         (s.width, s.height)
     }
 }
 
-// Wrapper around multiple Render Groups for to ensure the correct
+/// Wrapper around multiple Render Groups to ensure the correct target resolution
 #[derive(Default)]
 pub struct RenderStages {
     target_res: (u32, u32),
@@ -109,11 +112,12 @@ pub struct RenderStages {
 }
 
 impl RenderStages {
+    /// Create a new RenderStages
     pub fn new() -> RenderStages {
         Self::default()
     }
 
-    // Update the resolution of the every stage
+    /// Update the resolution of the every stage
     pub fn update_resolution(&mut self, context: &GraphicsContext, dims: (u32, u32)) {
         if self.target_res != dims {
             self.interpolation = Some(RenderGroup::new(

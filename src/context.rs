@@ -20,7 +20,7 @@ use crate::{
 
 use super::window::Window;
 
-// Graphical conext containing all data
+/// Core of the program, storing device information and all data
 pub struct GraphicsContext {
     pub surface: wgpu::Surface,
     pub device: wgpu::Device,
@@ -38,7 +38,7 @@ pub struct GraphicsContext {
     pub texture_render_group: RenderGroup,
 }
 
-// Context containing egui related items
+/// Context containing egui related items
 pub struct EguiContext {
     pub platform: Platform,
     pub render_pass: RenderPass,
@@ -46,7 +46,7 @@ pub struct EguiContext {
 }
 
 impl GraphicsContext {
-    // Vertexes spanning screenspace
+    /// Vertexes spanning screenspace
     const VERTICES: &'static [Vertex] = &[
         Vertex::xyz(1.0, 1.0, 0.0),
         Vertex::xyz(1.0, -1.0, 0.0),
@@ -54,26 +54,29 @@ impl GraphicsContext {
         Vertex::xyz(-1.0, 1.0, 0.0),
     ];
 
-    // Indices for vertexes
+    /// Indices for vertexes
     const INDICES: &'static [u16] = &[0, 3, 1, 1, 3, 2];
 
-    // Laplacian matrix
+    /// Laplacian matrix
     pub const LAPLACIAN: &'static [f32; 25] = &[
         -4.0, -1.0, 0.0, -1.0, -4.0, -1.0, 2.0, 3.0, 2.0, -1.0, 0.0, 3.0, 4.0, 3.0, 0.0, -1.0, 2.0,
         3.0, 2.0, -1.0, -4.0, -1.0, 0.0, -1.0, -4.0,
     ];
 
-    // Create a new graphics contexts
+    /// Create a new GraphicsContext
     pub async fn new(window: &Window) -> Self {
         let size = window.raw.inner_size();
 
+        // Create a new backend instance
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
 
+        // Create a new surface to render to
         let surface = unsafe { instance.create_surface(&window.raw) }.unwrap();
 
+        // Create a new device adapter
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
@@ -83,6 +86,7 @@ impl GraphicsContext {
             .await
             .unwrap();
 
+        // Get the queue and device from the adapter
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -98,8 +102,8 @@ impl GraphicsContext {
             .await
             .unwrap();
 
+        // Get the surface capabilites and select a target format
         let surface_caps = surface.get_capabilities(&adapter);
-
         let surface_format = surface_caps
             .formats
             .iter()
@@ -107,6 +111,7 @@ impl GraphicsContext {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
+        // Create a config and configure the surface to use that config
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -118,6 +123,7 @@ impl GraphicsContext {
         };
         surface.configure(&device, &config);
 
+        // Create the egui context and RenderPass for it
         let egui = EguiContext {
             platform: Platform::new(PlatformDescriptor {
                 physical_width: size.width,
@@ -129,12 +135,14 @@ impl GraphicsContext {
             last_frame: Instant::now(),
         };
 
+        // Create buffers, pipelines, shaders for use within the program
         let image_display = ImageDisplayWithBuffers::from_window(&device, &window.raw);
-        let texture_sampler = GraphicsContext::create_sampler(&device);
         let pipelines = Pipelines::new(&device, surface_format, &image_display.layout).await;
-        let stages = RenderStages::new();
+        let texture_sampler = GraphicsContext::create_sampler(&device);
         let buffers = GraphicsContext::create_buffers(&device);
+        let stages = RenderStages::new();
 
+        // Create the texture for the kernel and write the laplacian matrix to it
         let kernel_render_group = RenderGroup::new_without_context(
             (5, 5),
             &device,
@@ -148,8 +156,9 @@ impl GraphicsContext {
             &GraphicsContext::LAPLACIAN,
         );
 
+        // Create an empty render group which will be overwritten after the context is created
         let texture_render_group = RenderGroup::new_without_context(
-            (100, 100),
+            (1, 1),
             &device,
             wgpu::TextureFormat::Rgba32Float,
             &texture_sampler,
@@ -173,6 +182,7 @@ impl GraphicsContext {
             texture_render_group,
         };
 
+        // Load the texture into the empty render group
         context
             .load_texture(include_bytes!("../assets/raytrace.jpg"))
             .unwrap();
@@ -180,7 +190,7 @@ impl GraphicsContext {
         context
     }
 
-    // Create vertex and index buffers
+    /// Create vertex and index buffers
     pub fn create_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer) {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vertex_buf"),
@@ -197,6 +207,7 @@ impl GraphicsContext {
         (vertex_buffer, index_buffer)
     }
 
+    /// Create the sampler used for all textures
     pub fn create_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -209,6 +220,7 @@ impl GraphicsContext {
         })
     }
 
+    /// Load a new image into the program from bytes
     pub fn load_texture(&mut self, bytes: &[u8]) -> Result<()> {
         let img = image::load_from_memory(bytes)?;
         let rgba = img.to_rgba8();
@@ -269,6 +281,7 @@ impl GraphicsContext {
         Ok(())
     }
 
+    /// Load a new kernel texture
     pub fn write_kernel_texture(queue: &wgpu::Queue, texture: &wgpu::Texture, data: &[f32; 25]) {
         let mut normalized_values = Vec::new();
         queue.write_texture(
@@ -299,7 +312,7 @@ impl GraphicsContext {
         );
     }
 
-    // Resize window callback
+    /// Resize window callback
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
             self.config.width = width;
@@ -317,6 +330,7 @@ impl GraphicsContext {
         &mut self.image_display.internal
     }
 
+    /// Get the target resolution of the interpolation
     pub fn scaled_texture_size(&self) -> (u32, u32) {
         let original_size = self.texture_render_group.size();
         let scale = self.image_display().size;
@@ -326,6 +340,7 @@ impl GraphicsContext {
         )
     }
 
+    /// Get the max scale possible given the original size, and the device limits
     pub fn max_scale(&self) -> f32 {
         let size = self.texture_render_group.size();
         let base_size = u32::max(size.0, size.1) as f32;
@@ -333,7 +348,7 @@ impl GraphicsContext {
         max_size / base_size
     }
 
-    // Perform all render tasks per frame
+    /// Perform all render tasks per frame
     pub fn render(&mut self, window: &winit::window::Window) -> Result<()> {
         self.image_display.bind(self);
 
@@ -456,7 +471,7 @@ impl GraphicsContext {
         Ok(())
     }
 
-    // Perform a render pass from a bind group, to a texture view
+    /// Perform a render pass, given a render target and bind operations
     pub fn render_pass(
         &self,
         encoder: &mut CommandEncoder,
@@ -501,7 +516,7 @@ impl GraphicsContext {
         render_pass.draw_indexed(0..GraphicsContext::INDICES.len() as u32, 0, 0..1);
     }
 
-    // Render the ui using egui
+    /// Render the ui using egui
     pub fn render_egui(
         &mut self,
         encoder: &mut CommandEncoder,
@@ -659,7 +674,7 @@ impl GraphicsContext {
         render_pass.remove_textures(tdelta).unwrap();
     }
 
-    // Process a cursor event
+    /// Process an input event
     pub fn process_input(&mut self, event: CursorEvent) {
         let input = &mut self.input;
         match event {

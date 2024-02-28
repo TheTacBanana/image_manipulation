@@ -3,7 +3,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
 };
 
-// Wrapper around an eventloop and a window
+/// Wrapper around an eventloop and a window
 pub struct Window {
     pub event_loop: EventLoop<()>,
     pub raw: winit::window::Window,
@@ -16,7 +16,7 @@ impl Default for Window {
 }
 
 impl Window {
-    // Create a new Window
+    /// Create a new Window
     pub fn new() -> Self {
         let event_loop = EventLoop::new();
 
@@ -41,7 +41,7 @@ impl Window {
         Self { event_loop, raw }
     }
 
-    // Run the event loop with a callback
+    /// Run the event loop with a callback
     pub fn run(
         self,
         mut callback: impl 'static + FnMut(&winit::window::Window, Event<'_, ()>, &mut ControlFlow),

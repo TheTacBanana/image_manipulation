@@ -1,4 +1,4 @@
-// Simple struct vertex
+/// Simple struct vertex
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
@@ -6,13 +6,14 @@ pub struct Vertex {
 }
 
 impl Vertex {
+    /// Make a new Vertex
     pub const fn xyz(x: f32, y: f32, z: f32) -> Self {
         Self {
             position: [x, y, z],
         }
     }
 
-    // Get Buffer layout description for a Vertex
+    /// Get Buffer layout description for a Vertex
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
         wgpu::VertexBufferLayout {

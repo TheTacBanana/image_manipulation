@@ -2,6 +2,8 @@ use wgpu::util::DeviceExt;
 
 use crate::context::GraphicsContext;
 
+/// Store ImageDisplay alongside its layout and buffers
+/// Also store change detection
 #[derive(Debug)]
 pub struct ImageDisplayWithBuffers {
     pub internal: ImageDisplay,
@@ -11,7 +13,7 @@ pub struct ImageDisplayWithBuffers {
     pub bind_group: wgpu::BindGroup,
 }
 
-// Data for Image Display
+/// Data for Image Display
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImageDisplay {
     pub window_size: [f32; 2],
@@ -24,7 +26,7 @@ pub struct ImageDisplay {
     pub kernel: [f32; 25],
 }
 
-// Raw representation of ImageDisplay for binding to the GPU
+/// Raw representation of ImageDisplay for binding to the GPU
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RawImageDisplay {
@@ -36,7 +38,7 @@ pub struct RawImageDisplay {
     pub _pad: f32,
 }
 
-// Scaling Mode Enum
+/// Scaling Mode Enum
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum ScalingMode {
     NearestNeighbour = 0,
@@ -44,7 +46,7 @@ pub enum ScalingMode {
 }
 
 impl ImageDisplayWithBuffers {
-    // Create a new ImageDispay and generate buffers for data to be stored in
+    /// Create a new ImageDispay and generate buffers for data to be stored in
     pub fn from_window(
         device: &wgpu::Device,
         window: &winit::window::Window,
@@ -129,7 +131,7 @@ impl ImageDisplayWithBuffers {
         }
     }
 
-    // Bind ImageDisplay to the buffer
+    /// Bind ImageDisplay to the buffer
     pub fn bind(&self, context: &GraphicsContext) {
         context.queue.write_buffer(
             &self.buffer,
@@ -148,7 +150,7 @@ impl ImageDisplayWithBuffers {
 }
 
 impl ImageDisplay {
-    // Converts an ImageDisplay into RawImageDisplay for binding
+    /// Converts an ImageDisplay into RawImageDisplay for binding
     pub fn into_raw(&self) -> RawImageDisplay {
         RawImageDisplay {
             window_size: self.window_size,
@@ -160,7 +162,7 @@ impl ImageDisplay {
         }
     }
 
-    // Reset default values
+    /// Reset default values
     pub fn reset_default(&mut self) {
         let RawImageDisplay {
             window_size,
