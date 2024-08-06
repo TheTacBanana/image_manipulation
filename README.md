@@ -14,6 +14,12 @@ The kernel used for cross correlation can be modified to use any values
 
 New Images can be loaded using the Load button
 
+## Examples
+
+![Normal](./examples/Normal.png)
+![Gamma Correction](./examples/GammaCorrection.png)
+![Cross Correlation](./examples/CrossCorrelation.png)
+
 ## Improvements
 
 Currently the implemented technique for to find the minimum and maximum for use in the normalization step is slow and inefficient. I tried implemented Parallel Reductions as described in GPU Gems Chapter 37 but was unable to get it to work.
